@@ -12,23 +12,28 @@ echo "[1/4] 正在安装系统依赖 (Python, Git, GCC)..."
 pkg update -y
 pkg install -y python git clang make libffi openssl-tool libcrypt ndk-sysroot
 
-# 2. 克隆原项目仓库
+# 2. 克隆或更新原项目仓库
 if [ -d "xmir-patcher" ]; then
     echo "检测到 xmir-patcher 目录已存在，正在拉取最新代码..."
-    cd xmir-patcher && git pull && cd ..
+    cd xmir-patcher
+    git pull
 else
     echo "[2/4] 正在克隆官方仓库..."
     git clone --depth=1 https://github.com/openwrt-xiaomi/xmir-patcher.git
+    cd xmir-patcher
 fi
 
-cd xmir-patcher
+# 【路径断言】确保当前绝对位于 xmir-patcher 目录中
+if [ ! -f "requirements.txt" ]; then
+    echo "错误：未找到 requirements.txt，脚本未能进入正确目录！"
+    exit 1
+fi
 
 # 3. 安装 Python 依赖库
 echo "[3/4] 正在安装 Python 依赖库 (这可能需要几分钟)..."
-# 预先导出环境变量以防某些C扩展库编译失败
 export CFLAGS="-Wno-implicit-function-declaration"
 pip install --upgrade pip setuptools wheel
-# 过滤掉注释行并安装依赖
+# 使用标准安全的 -r 参数安装
 pip install -r requirements.txt
 
 # 4. 动态写入中文 menu.py
@@ -164,5 +169,5 @@ chmod +x menu.py
 
 echo "========================================="
 echo " 部署完成！请执行以下命令启动中文菜单："
-echo " cd xmir-patcher && python3 menu.py"
+echo " cd ~/xmir-patcher && python3 menu.py"
 echo "========================================="
