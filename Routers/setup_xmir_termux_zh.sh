@@ -77,7 +77,7 @@ def menu1_show():
   except Exception:
       pass
   print(get_header('='))
-  print(' 1 - 设置 IP 地址 (当前值: {})'.format(getattr(gw, 'ip_addr', '192.168.31.1')))
+  print(' 1 - 设置 IP 地址 (当前值: {})'.format(getattr(gw, 'ip_addr', 'miwifi.com')))
   print(' 2 - 连接到设备 (安装漏洞利用程序/Exploit)')
   print(' 3 - 读取完整的设备信息')
   print(' 4 - 创建完整备份')
