@@ -23,7 +23,7 @@ rm -rf "$TARGET_DIR" "$HOME/xmir-patcher-*" "$HOME/xmir.tar.gz"
 
 cd "$HOME"
 # 改用 tar.gz 格式规避 zip 归档变异问题
-curl -fsSL -o xmir.tar.gz "https://github.com/openwrt-xiaomi/xmir-patcher/archive/refs/heads/main.tar.gz" || \
+curl -fsSL -o xmir.tar.gz "https://cdn.jsdelivr.net/gh/openwrt-xiaomi/xmir-patcher/archive/refs/heads/main.tar.gz" || \
 curl -fsSL -o xmir.tar.gz "https://mirror.ghproxy.com/https://github.com/openwrt-xiaomi/xmir-patcher/archive/refs/heads/main.tar.gz"
 
 tar -zxf xmir.tar.gz
