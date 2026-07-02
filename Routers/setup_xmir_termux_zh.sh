@@ -29,7 +29,7 @@ echo "[3/4] 正在安装 Python 依赖库 (这可能需要几分钟)..."
 export CFLAGS="-Wno-implicit-function-declaration"
 pip install --upgrade pip setuptools wheel
 # 过滤掉注释行并安装依赖
-grep -v '^#' requirements.txt | xargs -r pip install
+pip install -r requirements.txt
 
 # 4. 动态写入中文 menu.py
 echo "[4/4] 正在生成中文菜单..."
