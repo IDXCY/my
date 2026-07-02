@@ -1,139 +1,182 @@
 #!/usr/bin/env bash
+
 # ==============================================================================
-#  Script: Xiaomi MiR Patcher Termux 极速部署 (2026 极致无 Bug 版)
+#  Script: Xiaomi MiR Patcher Termux Git 极速固化版
 # ==============================================================================
 set -euo pipefail
 
-# 日志函数
-log() { echo -e "\033[1;36m==>\033[0m \033[1m$*\033[0m"; }
+echo "========================================="
+echo "   小米路由器修补工具 Termux Git 一键部署"
+echo "========================================="
 
-TARGET_DIR="$HOME/xmir-patcher"
+# 1. 升级系统并安装基础依赖 (增加 unzip/curl 保底，防止上游第三方补丁依赖)
+echo "[1/4] 正在安装系统依赖 (Python, Git, GCC)..."
+pkg update -y -q || echo "提示：软件源索引可能被锁或跳过，尝试直接安装依赖..."
+pkg install -y -q python git clang make libffi openssl-tool libcrypt ndk-sysroot unzip curl >/dev/null 2>&1
 
-# ================================= 1. 环境与依赖 =================================
-log "1/4 配置 Termux 环境与核心依赖..."
-export DEBIAN_FRONTEND=noninteractive
-# 修复：防止某些 Termux 环境锁死，合流处理安装源
-pkg update -y -q || log "提示：更新索引跳过或失败，尝试直接安装依赖..."
-pkg install -y -q python clang make libffi openssl-tool libcrypt ndk-sysroot unzip curl >/dev/null 2>&1
+# 2. 克隆或增量更新原项目仓库
+TARGET_DIR="xmir-patcher"
 
-# ================================= 2. 源码下载 =================================
-log "正在通过多链路智能网关下载源码..."
-# 使用 tar 流直接管道解压，全面覆盖原生、加速代理与镜像源，防止单点 404 熔断
-curl -fsSL https://github.com/openwrt-xiaomi/xmir-patcher/archive/refs/heads/main.tar.gz | tar -zxf - || \
-curl -fsSL https://mirror.ghproxy.com/https://github.com/openwrt-xiaomi/xmir-patcher/archive/refs/heads/main.tar.gz | tar -zxf - || \
-curl -fsSL https://moeyy.cn/gh-proxy/https://github.com/openwrt-xiaomi/xmir-patcher/archive/refs/heads/main.tar.gz | tar -zxf -
+if [ -d "$TARGET_DIR" ]; then
+    echo "检测到 $TARGET_DIR 目录已存在，正在安全同步最新代码..."
+    cd "$TARGET_DIR"
+    # 规避 Termux 下因文件权限变更或冲突导致的 git pull 熔断崩溃
+    git stash -q || true
+    git pull -q || echo "警告：Git 自动同步失败，将维持当前本地版本运行。"
+else
+    echo "[2/4] 正在通过 Git 官方源深度克隆仓库..."
+    git clone --depth=1 -q https://github.com/openwrt-xiaomi/xmir-patcher.git "$TARGET_DIR"
+    cd "$TARGET_DIR"
+fi
 
-mv $HOME/xmir-patcher-main "$TARGET_DIR" 2>/dev/null || mv $HOME/xmir-patcher-* "$TARGET_DIR"
-
-# ================================= 3. Python 依赖 =================================
-log "3/4 编译并安装 Python 依赖库..."
+# 3. 安装 Python 依赖库
+echo "[3/4] 正在自适应编译并安装 Python 依赖库..."
 export CFLAGS="-Wno-implicit-function-declaration"
-pip install --upgrade pip setuptools wheel -q
-pip install -r requirements.txt -q
+pip install --upgrade pip setuptools wheel --quiet
 
-# ================================= 4. 构建中文控制台 =================================
-log "4/4 注入本地化中文菜单..."
+# 修复：直接利用 pip 自身原生的 -r 参数过滤并安装，效率远高于 xargs 管道进程
+pip install -r requirements.txt --quiet
+
+# 4. 动态写入中文 menu.py
+echo "[4/4] 正在生成本地化中文控制台..."
 cat << 'EOF' > menu.py
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-import sys, subprocess, gateway
 
-# 防御性初始化：规避无配置启动时的内部 Crash
+import os
+import sys
+import subprocess
+
 try:
-    gw = gateway.Gateway(detect_device=False, detect_ssh=False)
-except Exception:
-    import os
-    # 强制补一个空的或默认的配置逻辑，防止框架崩溃（具体取决于 xmir 源码内部实现）
-    gw = gateway.Gateway(detect_device=False, detect_ssh=False)
+    import xmir_base
+    import gateway
+    from gateway import die
+except ImportError:
+    # 规避因执行环境路径不对造成的模块缺失 Crash
+    sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+    import xmir_base
+    import gateway
+    from gateway import die
 
-def get_header(delim, suffix=''):
-    ssh_tip = "  💡 SSH默认账号&密码：root/root 修改root密码：passwd\n"
-    return f"{delim*58}\n\n 小米路由器修补工具 (Xiaomi MiR Patcher) {suffix}\n{ssh_tip}\n"
+# 防御性初始化：规避无配置启动时的内部 Crash，确保 getattr 保底
+try:
+    gw = gateway.Gateway(detect_device = False, detect_ssh = False)
+except Exception:
+    gw = gateway.Gateway(detect_device = False, detect_ssh = False)
+
+def get_header(delim, suffix = ''):
+  ssh_tip = "  💡 SSH 默认账号&密码：root/root 修改root密码：passwd\n"
+  header = delim*58 + '\n\n'
+  header += '小米路由器修补工具 (Xiaomi MiR Patcher) {} \n'.format(suffix)
+  header += ssh_tip + '\n'
+  return header
+
+def menu1_show():
+  try:
+      gw.load_config()
+  except Exception:
+      pass
+  print(get_header('='))
+  print(' 1 - 设置 IP 地址 (当前值: {})'.format(getattr(gw, 'ip_addr', '192.168.31.1')))
+  print(' 2 - 连接到设备 (安装漏洞利用程序/Exploit)')
+  print(' 3 - 读取完整的设备信息')
+  print(' 4 - 创建完整备份')
+  print(' 5 - 安装 英文/俄文 语言包')
+  print(' 6 - 安装永久 SSH')
+  print(' 7 - 安装固件 (自 "firmware" 目录)')
+  print(' 8 - {{{ 其它高级功能 }}}')
+  print(' 9 - [[ 重启设备 ]]')
+  print(' 0 - 退出')
+
+def menu1_process(id):
+  if id == 1:
+    ip_addr = input("请输入设备 IP 地址: ")
+    return [ "gateway.py", ip_addr ]
+  if id == 2: return "connect.py"
+  if id == 3: return "read_info.py"
+  if id == 4: return "create_backup.py"
+  if id == 5: return "install_lang.py"
+  if id == 6: return "install_ssh.py"
+  if id == 7: return "install_fw.py"
+  if id == 8: return "__menu2"
+  if id == 9: return "reboot.py"
+  if id == 0: sys.exit(0)
+  return None
+
+def menu2_show():
+  print(get_header('-', '(扩展功能)'))
+  print(' 1 - 设置 IP 地址 (当前值: {})'.format(getattr(gw, 'ip_addr', '192.168.31.1')))
+  print(' 2 - 修改 root 密码')
+  print(' 3 - 读取 dmesg 和 syslog 日志')
+  print(' 4 - 创建指定分区的备份')
+  print(' 5 - 卸载 英文/俄文 语言包')
+  print(' 6 - 设置内核启动地址')
+  print(' 7 - 安装 Breed 引导加载程序')
+  print(' 8 - __测试功能__')
+  print(' 9 - [[ 重启设备 ]]')
+  print(' 0 - 返回主菜单')
+
+def menu2_process(id):
+  if id == 1:
+    ip_addr = input("请输入设备 IP 地址: ")
+    return [ "gateway.py", ip_addr ]
+  if id == 2: return "passw.py"
+  if id == 3: return "read_dmesg.py"
+  if id == 4: return [ "create_backup.py", "part" ]
+  if id == 5: return [ "install_lang.py", "uninstall" ]
+  if id == 6: return "activate_boot.py"
+  if id == 7: return [ "install_bl.py", "breed" ]
+  if id == 8: return "test.py"
+  if id == 9: return "reboot.py"
+  if id == 0: return "__menu1"
+  return None
 
 def menu_show(level):
-    try:
-        gw.load_config()
-    except Exception:
-        pass
+  if level == 1:
+    return menu1_show()
+  else:
+    return menu2_show()
 
-    if level == 1:
-        print(get_header('='))
-        menus = [
-            f" 1 - 设置 IP 地址 (当前: {getattr(gw, 'ip_addr', '192.168.31.1')})",
-            " 2 - 连接到设备 (安装漏洞利用/Exploit)",
-            " 3 - 读取完整的设备信息",
-            " 4 - 创建完整备份",
-            " 5 - 安装 英文/俄文 语言包",
-            " 6 - 安装永久 SSH",
-            " 7 - 安装固件 (自 'firmware' 目录)",
-            " 8 - {{{ 其它高级功能 }}}",
-            " 9 - [[ 重举设备 ]]",
-            " 0 - 退出"
-        ]
-    else:
-        print(get_header('-', '(扩展功能)'))
-        menus = [
-            f" 1 - 设置 IP 地址 (当前: {getattr(gw, 'ip_addr', '192.168.31.1')})",
-            " 2 - 修改 root 密码",
-            " 3 - 读取 dmesg 和 syslog 日志",
-            " 4 - 创建指定分区的备份",
-            " 5 - 卸载 英文/俄文 语言包",
-            " 6 - 设置内核启动地址",
-            " 7 - 安装 Breed 引导加载程序",
-            " 8 - __测试功能__",
-            " 9 - [[ 重启设备 ]]",
-            " 0 - 返回主菜单"
-        ]
-    print("\n".join(menus))
-    return '请选择输入: '
-
-def menu_process(level, idx):
-    if level == 1:
-        mapping = {
-            1: lambda: ["gateway.py", input("请输入设备 IP 地址: ")],
-            2: "connect.py", 3: "read_info.py", 4: "create_backup.py",
-            5: "install_lang.py", 6: "install_ssh.py", 7: "install_fw.py",
-            8: "__menu2", 9: "reboot.py", 0: lambda: sys.exit(0)
-        }
-    else:
-        mapping = {
-            1: lambda: ["gateway.py", input("请输入设备 IP 地址: ")],
-            2: "passw.py", 3: "read_dmesg.py", 4: ["create_backup.py", "part"],
-            5: ["install_lang.py", "uninstall"], 6: "activate_boot.py",
-            7: ["install_bl.py", "breed"], 8: "test.py", 9: "reboot.py", 0: "__menu1"
-        }
-    res = mapping.get(idx)
-    return res() if callable(res) else res
+def menu_process(level, id):
+  if level == 1:
+    return menu1_process(id)
+  else:
+    return menu2_process(id)
 
 def menu():
-    level = 1
-    while True:
-        print('')
-        try:
-            select = input(menu_show(level))
-            if not select: continue
-            idx = int(select)
-            if idx < 0: continue
-        except (ValueError, KeyboardInterrupt, EOFError):
-            continue
+  level = 1
+  while True:
+    print('')
+    menu_show(level)
+    print('')
+    try:
+        select = input('请选择输入: ')
+        if not select: continue
+        id = int(select)
+        if id < 0: continue
+    except (ValueError, KeyboardInterrupt, EOFError):
+        continue
 
-        cmd = menu_process(level, idx)
-        if not cmd: continue
-        if cmd == '__menu1': level = 1; continue
-        if cmd == '__menu2': level = 2; continue
+    cmd = menu_process(level, id)
+    if not cmd: continue
+    if cmd == '__menu1':
+      level = 1
+      continue
+    if cmd == '__menu2':
+      level = 2
+      continue
 
-        args = [sys.executable] + ([cmd] if isinstance(cmd, str) else cmd)
-        subprocess.run(args)
+    args = [sys.executable] + ([cmd] if isinstance(cmd, str) else cmd)
+    subprocess.run(args)
 
 if __name__ == "__main__":
     menu()
 EOF
+
 chmod +x menu.py
 
-# ================================= 5. 深度清理 =================================
-log "清理安装缓存与临时文件..."
-rm -rf "$HOME/.cache/pip" "$PREFIX/tmp/*" "$TMPDIR/*" 2>/dev/null || true
-pkg clean -y >/dev/null 2>&1 || true
+# 5. 极速深度清理
+rm -rf "$HOME/.cache/pip" 2>/dev/null || true
 
 # ================================= 6. 自动启动 =================================
 echo -e "\n\033[1;32m=========================================\033[0m"
