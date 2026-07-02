@@ -14,10 +14,11 @@
 * `setup_xmir_termux_zh.sh`：
   * **定位**：Termux 专用的 `xmir-patcher` 一键本地化汉化控制台。
   * **特性**：内置防御性初始化，集成本地化中文菜单，替换进程一键直达修补界面。
+  * **状态**：*待进一步实际场景测试验证*。
 * `deploy_xmir_services.sh`：
   * **定位**：二进制服务一键部署与开机自启固化脚本。
   * **支持组件**：DDNS-Go, AdGuard Home, frpc, mihomo, MosDNS, socat, WireGuard。
-  * **状态**：*迭代中 (待进一步生产环境测试验证)*。
+  * **状态**：*待进一步实际场景测试验证*。
 
 ---
 
