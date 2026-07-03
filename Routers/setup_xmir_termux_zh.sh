@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # ==============================================================================
-#  Script: Xiaomi MiR Patcher Termux Git 极速固化版 (终极完结形态)
+#  Script: Xiaomi MiR Patcher Termux Git 极速固化版
 # ==============================================================================
 set -euo pipefail
 
@@ -9,40 +9,33 @@ echo "========================================="
 echo "   小米路由器修补工具 Termux Git 一键部署"
 echo "========================================="
 
-# 1. 精简系统依赖
-echo "[1/4] 正在安装系统依赖 (Python, Git, OpenSSL)..."
+# 1. 升级系统并安装基础依赖 (增加 unzip/curl 保底，防止上游第三方补丁依赖)
+echo "[1/4] 正在安装系统依赖 (Python, Git, GCC)..."
 pkg update -y -q || echo "提示：软件源索引可能被锁或跳过，尝试直接安装依赖..."
-pkg install -y -q python git openssl-tool libcrypt curl >/dev/null 2>&1
+pkg install -y -q python git clang make libffi openssl-tool libcrypt ndk-sysroot unzip curl >/dev/null 2>&1
 
-# 2. 克隆或增量更新原项目仓库 (弃用容易拦截空仓库的前缀网关，改用独立全量反代域名)
+# 2. 克隆或增量更新原项目仓库
 TARGET_DIR="xmir-patcher"
-
-# 深度清理之前的空壳残余，防止污染
-rm -rf "$TARGET_DIR" 2>/dev/null || true
 
 if [ -d "$TARGET_DIR" ]; then
     echo "检测到 $TARGET_DIR 目录已存在，正在安全同步最新代码..."
     cd "$TARGET_DIR"
-    git remote set-url origin "https://kkgithub.com/openwrt-xiaomi/xmir-patcher.git" 2>/dev/null || true
+    # 规避 Termux 下因文件权限变更或冲突导致的 git pull 熔断崩溃
     git stash -q || true
     git pull -q || echo "警告：Git 自动同步失败，将维持当前本地版本运行。"
 else
-    echo "[2/4] 正在通过 KKGitHub 高速全量镜像克隆仓库..."
-    # 核心修改：使用支持全量数据传输的独立镜像域名，确保解壳完整，杜绝空仓库
-    git clone --depth=1 -q "https://kkgithub.com/openwrt-xiaomi/xmir-patcher.git" "$TARGET_DIR"
+    echo "[2/4] 正在通过 Git 官方源深度克隆仓库..."
+    git clone --depth=1 -q https://github.com/openwrt-xiaomi/xmir-patcher.git "$TARGET_DIR"
     cd "$TARGET_DIR"
 fi
 
 # 3. 安装 Python 依赖库
-echo "[3/4] 正在安装 Python 依赖库..."
+echo "[3/4] 正在自适应编译并安装 Python 依赖库..."
 export CFLAGS="-Wno-implicit-function-declaration"
+pip install --upgrade pip setuptools wheel --quiet
 
-# 核心修复 1：利用 || true 彻底阻断 Python 3.14 下的 ignoring 警告引发的 Bash 严格熔断
-pip install -r requirements.txt || echo "提示：依赖扫描完成。"
-
-# === 极简物理网关嗅探注入 ===
-DETECTED_IP=$(ip route show 2>/dev/null | grep -i default | awk '{print $3}' | head -n 1 || true)
-export ROUTER_IP="${DETECTED_IP:-192.168.31.1}"
+# 修复：直接利用 pip 自身原生的 -r 参数过滤并安装，效率远高于 xargs 管道进程
+pip install -r requirements.txt --quiet
 
 # 4. 动态写入中文 menu.py
 echo "[4/4] 正在生成本地化中文控制台..."
@@ -59,15 +52,15 @@ try:
     import gateway
     from gateway import die
 except ImportError:
+    # 规避因执行环境路径不对造成的模块缺失 Crash
     sys.path.append(os.path.dirname(os.path.abspath(__file__)))
     import xmir_base
     import gateway
     from gateway import die
 
-# 防御性初始化：动态读取环境变量中抓取到的物理网关数字 IP
+# 防御性初始化：规避无配置启动时的内部 Crash，确保 getattr 保底
 try:
     gw = gateway.Gateway(detect_device = False, detect_ssh = False)
-    gw.ip_addr = os.environ.get("ROUTER_IP", "192.168.31.1")
 except Exception:
     gw = gateway.Gateway(detect_device = False, detect_ssh = False)
 
