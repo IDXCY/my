@@ -32,10 +32,16 @@ else
     cd "$TARGET_DIR"
 fi
 
-# 3. 安装 Python 依赖库 (由于移除了本地编译器，这里全面强制优先使用预编译 wheel)
+# 3. 安装 Python 依赖库 (针对 Termux 特化修复)
 echo "[3/4] 正在安装 Python 依赖库..."
-pip install --upgrade pip setuptools wheel --quiet
-pip install -r requirements.txt --quiet
+export CFLAGS="-Wno-implicit-function-declaration"
+
+if [ -f "requirements.txt" ]; then
+    echo "正在解析 requirements.txt 并安装依赖..."
+    pip install -r requirements.txt
+else
+    log_warn "未检测到 requirements.txt，尝试跳过。"
+fi
 
 # === 极简物理网关嗅探注入 ===
 # 提取默认网关 IP，如果提取失败则保底使用 192.168.31.1
