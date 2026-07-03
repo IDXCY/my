@@ -14,20 +14,22 @@ echo "[1/4] 正在安装系统依赖 (Python, Git, OpenSSL)..."
 pkg update -y -q || echo "提示：软件源索引可能被锁或跳过，尝试直接安装依赖..."
 pkg install -y -q python git openssl-tool libcrypt curl >/dev/null 2>&1
 
-# 2. 克隆或增量更新原项目仓库
+# 2. 克隆或增量更新原项目仓库 (弃用容易拦截空仓库的前缀网关，改用独立全量反代域名)
 TARGET_DIR="xmir-patcher"
+
+# 深度清理之前的空壳残余，防止污染
+rm -rf "$TARGET_DIR" 2>/dev/null || true
 
 if [ -d "$TARGET_DIR" ]; then
     echo "检测到 $TARGET_DIR 目录已存在，正在安全同步最新代码..."
     cd "$TARGET_DIR"
-    # 核心优化：如果用户之前是用官方源克隆的，动态将本地仓库的上游地址也变更为 gh-proxy
-    git remote set-url origin https://moeyy.cn/gh-proxy/https://github.com/openwrt-xiaomi/xmir-patcher.git 2>/dev/null || true
+    git remote set-url origin "https://kkgithub.com/openwrt-xiaomi/xmir-patcher.git" 2>/dev/null || true
     git stash -q || true
     git pull -q || echo "警告：Git 自动同步失败，将维持当前本地版本运行。"
 else
-    echo "[2/4] 正在通过 gh-proxy 代理节点深度克隆仓库..."
-    # 核心修改：在原 GitHub 链接前直接强行注入 gh-proxy 前缀
-    git clone --depth=1 -q https://moeyy.cn/gh-proxy/https://github.com/openwrt-xiaomi/xmir-patcher.git "$TARGET_DIR"
+    echo "[2/4] 正在通过 KKGitHub 高速全量镜像克隆仓库..."
+    # 核心修改：使用支持全量数据传输的独立镜像域名，确保解壳完整，杜绝空仓库
+    git clone --depth=1 -q "https://kkgithub.com/openwrt-xiaomi/xmir-patcher.git" "$TARGET_DIR"
     cd "$TARGET_DIR"
 fi
 
