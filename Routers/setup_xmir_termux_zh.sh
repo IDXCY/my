@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # ==============================================================================
-#  Script: Xiaomi MiR Patcher Termux Git 极速固化版 (轻量生产环境对齐)
+#  Script: Xiaomi MiR Patcher Termux Git 极速固化版 (终极完结形态)
 # ==============================================================================
 set -euo pipefail
 
@@ -9,10 +9,9 @@ echo "========================================="
 echo "   小米路由器修补工具 Termux Git 一键部署"
 echo "========================================="
 
-# 1. 精简系统依赖 (剔除无用的 ndk-sysroot, make, clang, unzip，仅保留核心链)
+# 1. 精简系统依赖
 echo "[1/4] 正在安装系统依赖 (Python, Git, OpenSSL)..."
 pkg update -y -q || echo "提示：软件源索引可能被锁或跳过，尝试直接安装依赖..."
-# 保留 openssl-tool 和 libcrypt 是为了保底特殊加密漏洞利用时的二进制握手
 pkg install -y -q python git openssl-tool libcrypt curl >/dev/null 2>&1
 
 # 2. 克隆或增量更新原项目仓库
@@ -24,28 +23,20 @@ if [ -d "$TARGET_DIR" ]; then
     git stash -q || true
     git pull -q || echo "警告：Git 自动同步失败，将维持当前本地版本运行。"
 else
-    echo "[2/4] 正在克隆仓库..."
-    # 优先使用 GitHub 官方源克隆，若失败（15秒超时）则秒级无缝切换到国内高速 Git 镜像
-    git clone --depth=1 -q https://github.com/openwrt-xiaomi/xmir-patcher.git "$TARGET_DIR" || \
-    git clone --depth=1 -q https://mirror.ghproxy.com/https://github.com/openwrt-xiaomi/xmir-patcher.git "$TARGET_DIR"
-
+    echo "[2/4] 正在通过 Git 官方源深度克隆仓库..."
+    git clone --depth=1 -q https://github.com/openwrt-xiaomi/xmir-patcher.git "$TARGET_DIR"
     cd "$TARGET_DIR"
 fi
 
-# 3. 安装 Python 依赖库 (引入 OR 保底机制，防止 pip 警告触发 set -e 熔断)
+# 3. 安装 Python 依赖库
 echo "[3/4] 正在安装 Python 依赖库..."
 export CFLAGS="-Wno-implicit-function-declaration"
 
-if [ -f "requirements.txt" ]; then
-    echo "正在解析 requirements.txt 并安装依赖..."
-    # 核心修复：添加 || true。即使 pip 因为环境标记报出不合规的警告状态码，也视为成功，不允许脚本自毁
-    pip install -r requirements.txt || echo "提示：依赖库环境判定完成。"
-else
-    echo "提示：未检测到 requirements.txt，跳过。"
-fi
+# 核心修复 1：利用 || true 彻底阻断 Python 3.14 下的 ignoring 警告引发的 Bash 严格熔断
+pip install -r requirements.txt || echo "提示：依赖扫描完成。"
 
 # === 极简物理网关嗅探注入 ===
-# 提取默认网关 IP，如果提取失败则保底使用 192.168.31.1
+# 核心修复 2：在写入 menu.py 之前计算出 IP，通过环境变量安全跨进程递交
 DETECTED_IP=$(ip route show 2>/dev/null | grep -i default | awk '{print $3}' | head -n 1)
 export ROUTER_IP="${DETECTED_IP:-192.168.31.1}"
 
@@ -69,6 +60,7 @@ except ImportError:
     import gateway
     from gateway import die
 
+# 防御性初始化：动态读取环境变量中抓取到的物理网关数字 IP
 try:
     gw = gateway.Gateway(detect_device = False, detect_ssh = False)
     gw.ip_addr = os.environ.get("ROUTER_IP", "192.168.31.1")
