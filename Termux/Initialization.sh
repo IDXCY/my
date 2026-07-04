@@ -171,4 +171,6 @@ git config --global --unset https.proxy
 # 移除 apt 临时配置文件，保证日常不依赖固定本地端口
 rm -f $PREFIX/etc/apt/apt.conf.d/80proxy
 
+termux-change-repo
+
 echo "=== 初始化全部完美成功！重启 Termux 或运行 exec zsh 生效 ==="
