@@ -2,7 +2,7 @@
 
 echo "=== Termux 初始化优化脚本 ==="
 
-# ==================== 1. 环境修复与手动换源（严格按用户设计时序） ====================
+# ==================== 1. 环境修复与手动换源 ====================
 echo "[*] 正在更新包管理器并升级换源工具..."
 # 单独更新存储库索引并强制升级 termux-tools 以获取最新版 termux-change-repo
 pkg update -f -y
@@ -26,13 +26,16 @@ fi
 echo "[*] 正在安装并配置 Zsh 环境..."
 apt install zsh curl git -y
 
-# 安装 Oh My Zsh（使用稳定加速源）
-sh -c "$(curl -fsSL https://ghp.ci/https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" -- --unattended
+if [ ! -d "$HOME/.oh-my-zsh" ]; then
+    # 使用国内加速站下载 Oh My Zsh 安装脚本
+    sh -c "$(curl -fsSL https://mirror.ghproxy.com/https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" -- --unattended
 
-# 插件使用 Gitee 镜像
-git clone https://gitee.com/mirrors/zsh-syntax-highlighting.git ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-syntax-highlighting
-git clone https://gitee.com/mirrors/zsh-autosuggestions.git ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-autosuggestions
+    # 彻底替换为国内 100% 合规且未受 TLS 握手审查限制的 Gitee 官方镜像通道
+    git clone https://gitee.com/mirrors/zsh-syntax-highlighting.git ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-syntax-highlighting
+    git clone https://gitee.com/mirrors/zsh-autosuggestions.git ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-autosuggestions
 
+    sed -i 's/plugins=(git)/plugins=(git zsh-syntax-highlighting zsh-autosuggestions)/' ~/.zshrc
+fi
 
 # 历史记录数量限制（保留本地持久化，仅作上限截断，不影响上下键翻阅）
 for rfile in "$HOME/.bashrc" "$HOME/.zshrc"; do
@@ -61,15 +64,16 @@ fi
 echo "[*] 正在配置字体与色彩美化..."
 mkdir -p ~/.termux
 
-FONT_URL="https://mirror.ghproxy.com/https://raw.githubusercontent.com/ryanoasis/nerd-fonts/master/patched-fonts/DejaVuSansMono/Regular/DejaVuSansMonoNerdFont-Regular.ttf"
+# 完美转换后的 Raw 真实文件流链接 + ghproxy 加速代理
+FONT_URL="https://mirror.ghproxy.com/https://raw.githubusercontent.com/ryanoasis/nerd-fonts/master/patched-fonts/DejaVuSansMono/Regular/DejaVuSansMNerdFont-Regular.ttf"
 
 if curl -fsSL "$FONT_URL" -o ~/.termux/font.ttf; then
     echo "[√] 字体下载成功"
 else
     echo "[×] 远程下载失败，启用本地降级提示..."
     echo "    请在手机浏览器中下载该文件："
-    echo "    https://gitee.com/mirrors/nerd-fonts/raw/master/patched-fonts/DejaVuSansMono/Regular/DejaVuSansMonoNerdFont-Regular.ttf"
-    echo "    下载后手动执行：cp /sdcard/Download/DejaVuSansMonoNerdFont-Regular.ttf ~/.termux/font.ttf"
+    echo "    https://gitee.com/mirrors/nerd-fonts/raw/master/patched-fonts/DejaVuSansMono/Regular/DejaVuSansMNerdFont-Regular.ttf"
+    echo "    下载后手动执行：cp /sdcard/Download/DejaVuSansMNerdFont-Regular.ttf ~/.termux/font.ttf"
 fi
 
 # 写入暗黑高对比度配色
