@@ -1,37 +1,26 @@
 #!/data/data/com.termux/files/usr/bin/bash
 
-echo "=== Termux 初始化优化脚本 (纯净原生·代理高可用版) ==="
+echo "=== Termux 初始化优化脚本 (纯净原生·时序严谨完全体) ==="
 
-# ==================== 0. 代理自动化注入 (用户自定义) ====================
+# ==================== 0. 代理初始化与 Apt 通道建立 ====================
 echo "[-] 为了确保官方源、GitHub 框架、插件、字体 100% 畅通，必须配置代理。"
 read -p "请输入你的本地代理IP (直接回车默认 127.0.0.1): " PROXY_IP
 PROXY_IP=${PROXY_IP:-"127.0.0.1"}
 
-read -p "请输入你的代理共享端口 (直接回车默认 7890): " PROXY_PORT
-PROXY_PORT=${PROXY_PORT:-"7890"}
+read -p "请输入你的代理共享端口 (直接回车默认 10808): " PROXY_PORT
+PROXY_PORT=${PROXY_PORT:-"10808"}
 
-# 注入环境变量通道（供 curl、wget 使用）
+# A. 注入局部环境变量（供 curl、wget 物理继承）
 export http_proxy="http://${PROXY_IP}:${PROXY_PORT}"
 export https_proxy="http://${PROXY_IP}:${PROXY_PORT}"
 
-# 【核心修复】硬编码注入 apt 内核通道（彻底解决 Unable to locate package）
+# B. 硬编码注入 apt 内核通道（防止直连引发 Unable to locate package）
 mkdir -p $PREFIX/etc/apt/apt.conf.d
 echo "Acquire::http::Proxy \"http://${PROXY_IP}:${PROXY_PORT}\";" > $PREFIX/etc/apt/apt.conf.d/80proxy
 echo "Acquire::https::Proxy \"http://${PROXY_IP}:${PROXY_PORT}\";" >> $PREFIX/etc/apt/apt.conf.d/80proxy
 
-echo "[√] 全链路代理通道已完美搭建（环境层/Git层/Apt层）"
+echo "[√] Apt 通道与环境层代理已就绪。"
 echo "--------------------------------------------------------"
-
-# ==================== 1. 物理粉碎脏缓存与重置官方源 ====================
-echo "[*] 正在物理粉碎可能存在的旧锁文件与脏索引残留..."
-rm -rf $PREFIX/var/lib/apt/lists/*
-rm -f $PREFIX/var/lib/dpkg/lock*
-rm -f $PREFIX/var/lib/apt/lists/lock*
-
-echo "[*] 正在强制重置为官方原生高可靠源..."
-cat << 'EOF' > $PREFIX/etc/apt/sources.list
-deb https://packages-cf.termux.org/apt/termux-main stable main
-EOF
 
 echo "[*] 正在通过高可用通道同步官方最新软件包索引..."
 apt update -y
@@ -45,22 +34,34 @@ if [ ! -d "$HOME/storage" ]; then
     termux-setup-storage
 fi
 
-# ==================== 2. 极简 Zsh 环境配置 ====================
+# ==================== 1. 物理清空过往残留脏数据与重置官方源 ====================
+echo "[*] 正在物理粉碎可能存在的历史旧锁与残缺索引残留（防前次报错死锁）..."
+rm -rf $PREFIX/var/lib/apt/lists/*
+rm -f $PREFIX/var/lib/dpkg/lock*
+rm -f $PREFIX/var/lib/apt/lists/lock*
+
+echo "[*] 正在强制重置为官方原生高可靠源..."
+cat << 'EOF' > $PREFIX/etc/apt/sources.list
+deb https://packages-cf.termux.org/apt/termux-main stable main
+EOF
+
+# ==================== 2. 工具箱安装与 Git 代理精准后置注入 ====================
 echo "[*] 正在一次性安装 Zsh, Git 及所有必备工具箱..."
+# 只有在这一行执行完后，系统里才真正拥有 'git' 命令
 apt install zsh curl git tmux tree lf htop ncdu vim wget -y
 
-# 注入 Git 全局配置通道（供插件克隆使用）
+# 【精准时序修复】Git 软件已确认安全安装，此时注入 Git 全局代理，绝不报错
+echo "[*] 正在为已安装的 Git 挂载高可用代理通道..."
 git config --global http.proxy "http://${PROXY_IP}:${PROXY_PORT}"
 git config --global https.proxy "http://${PROXY_IP}:${PROXY_PORT}"
 
-# 稳妥健壮的 Oh My Zsh 安装逻辑
+# ==================== 3. 极简 Zsh 环境配置 (依托 Git 代理高速克隆) ====================
 if [ ! -f "$HOME/.oh-my-zsh/oh-my-zsh.sh" ]; then
-    echo "[*] 正在重新克隆 Oh My Zsh 官方完整存储库..."
+    echo "[*] 正在克隆 Oh My Zsh 官方完整存储库..."
     rm -rf "$HOME/.oh-my-zsh"
     git clone https://github.com/ohmyzsh/ohmyzsh.git "$HOME/.oh-my-zsh"
 fi
 
-# 确保核心插件目录完整
 ZSH_CUSTOM="$HOME/.oh-my-zsh/custom"
 if [ ! -d "$ZSH_CUSTOM/plugins/zsh-syntax-highlighting" ]; then
     echo "[*] 正在克隆语法高亮插件..."
@@ -77,14 +78,9 @@ echo "[*] 正在生成标准 .zshrc 配置文件..."
 cat << 'EOF' > "$HOME/.zshrc"
 # ==================== 1. Oh My Zsh 核心框架初始化 ====================
 export ZSH="$HOME/.oh-my-zsh"
-
-# 选用经典极简主题
 ZSH_THEME="robbyrussell"
-
-# 启用核心功能插件
 plugins=(git zsh-syntax-highlighting zsh-autosuggestions)
 
-# 唤醒 Oh My Zsh 核心管理器
 if [ -f "$ZSH/oh-my-zsh.sh" ]; then
     source $ZSH/oh-my-zsh.sh
 fi
@@ -94,7 +90,6 @@ export HISTFILE="$HOME/.zsh_history"
 export HISTSIZE=5000
 export SAVEHIST=5000
 
-# 核心同步写入机制
 setopt BANG_HIST
 setopt EXTENDED_HISTORY
 setopt INC_APPEND_HISTORY
@@ -117,7 +112,7 @@ if ! grep -q "exec zsh" "$HOME/.bashrc"; then
     echo "exec zsh" >> "$HOME/.bashrc"
 fi
 
-# ==================== 3. 字体与显示美化 ====================
+# ==================== 4. 字体与显示美化 ====================
 echo "[*] 正在配置字体与色彩美化..."
 mkdir -p ~/.termux
 
@@ -154,7 +149,7 @@ EOF
 
 termux-reload-settings
 
-# ==================== 4. 退出清理环境 ====================
+# ==================== 5. 退出清理环境 ====================
 echo "[*] 正在卸载脚本运行时临时挂载的代理通道..."
 # 移除全局 Git 代理，转为纯净态
 git config --global --unset http.proxy
