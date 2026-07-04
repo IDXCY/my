@@ -32,3 +32,7 @@ curl -LO https://cdn.jsdelivr.net/gh/IDXCY/my@main/Routers/setup_xmir_termux_zh.
 ```bash
 curl -LO https://cdn.jsdelivr.net/gh/IDXCY/my@main/Routers/deploy_services.sh && chmod +x deploy_services.sh && ./deploy_services.sh
 ```
+
+```bash
+curl -LO https://cdn.jsdelivr.net/gh/IDXCY/my@main/Termux/Initialization.sh && chmod +x Initialization.sh && ./Initialization.sh
+```

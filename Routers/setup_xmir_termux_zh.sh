@@ -177,7 +177,7 @@ chmod +x menu.py
 
 # 5. 极速深度清理与快捷方式创建
 rm -rf "$HOME/.cache/pip" 2>/dev/null || true
-rm -f "../setup_xmir_termux_zh.sh" 2>/dev/null || true  # 清理下载的安装脚本自身
+rm -f "$HOME/setup_xmir_termux_zh.sh" 2>/dev/null || true  # 清理下载的安装脚本自身
 
 # 创建持久化启动快捷方式
 cat << 'EOF' > $HOME/start_xmir.sh
