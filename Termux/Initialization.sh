@@ -3,34 +3,44 @@
 echo "=== Termux 初始化优化脚本 (纯净原生健壮版) ==="
 
 # ==================== 0. 代理自动化注入 (用户自定义) ====================
-echo "[-] 为了确保 GitHub 官方域名（框架、插件、字体）100% 下载成功，必须配置代理。"
+echo "[-] 为了确保 GitHub 官方域名与官方官方源 100% 畅通，必须配置代理。"
 read -p "请输入你的本地代理IP (直接回车默认 127.0.0.1): " PROXY_IP
 PROXY_IP=${PROXY_IP:-"127.0.0.1"}
 
 read -p "请输入你的代理共享端口 (直接回车默认 10808): " PROXY_PORT
 PROXY_PORT=${PROXY_PORT:-"10808"}
 
-# 组装代理全局变量
+# 组装代理全局变量（同时接管 curl、wget 和 apt）
 export http_proxy="http://${PROXY_IP}:${PROXY_PORT}"
 export https_proxy="http://${PROXY_IP}:${PROXY_PORT}"
 
-# 强行将代理注入全局 Git 配置，确保后续克隆畅通无阻
+# 强行将代理注入全局 Git 配置
 git config --global http.proxy "http://${PROXY_IP}:${PROXY_PORT}"
 git config --global https.proxy "http://${PROXY_IP}:${PROXY_PORT}"
 
 echo "[√] 终端局部代理已配置: ${http_proxy}"
 echo "--------------------------------------------------------"
 
-# ==================== 1. 环境修复与手动换源 ====================
-echo "[*] 正在更新包管理器并升级换源工具..."
-pkg update -f -y
-pkg install termux-tools -y
+# ==================== 1. 环境修复与强制官方源 (规避镜像同步错误) ====================
+echo "[*] 正在强制重置为官方原生源 (通过代理下载，杜绝第三方镜像站同步报错)..."
 
-echo "[*] 请在弹出的菜单中手动选择你需要的镜像源..."
-termux-change-repo
+# 强制将 sources.list 还原为官方主源，彻底废弃出错的镜像站
+cat << 'EOF' > $PREFIX/etc/apt/sources.list
+deb https://packages-cf.termux.org/apt/termux-main stable main
+EOF
 
-echo "[*] 正在根据新镜像源执行全局软件升级..."
-pkg upgrade -y
+# 清理过往出错的、残缺的旧索引缓存
+rm -rf $PREFIX/var/lib/apt/lists/*
+
+echo "[*] 正在通过代理拉取官方最新软件包索引..."
+# 强制刷新索引
+apt update -y
+
+echo "[*] 正在升级底层换源工具链..."
+apt install termux-tools -y
+
+echo "[*] 正在执行全局软件升级..."
+apt upgrade -y
 
 if [ ! -d "$HOME/storage" ]; then
     echo "[*] 正在请求存储权限，请在系统弹窗中允许..."
@@ -39,11 +49,12 @@ fi
 
 # ==================== 2. 极简 Zsh 环境配置 ====================
 echo "[*] 正在安装并配置 Zsh 环境..."
+# 此时索引已完全正常，这一步将 100% 成功安装
 apt install zsh curl git -y
 
 # 稳妥健壮的 Oh My Zsh 安装逻辑
 if [ ! -f "$HOME/.oh-my-zsh/oh-my-zsh.sh" ]; then
-    echo "[*] 核心框架不存在或破损，正在重新克隆 Oh My Zsh 官方完整存储库..."
+    echo "[*] 正在重新克隆 Oh My Zsh 官方完整存储库..."
     rm -rf "$HOME/.oh-my-zsh"
     git clone https://github.com/ohmyzsh/ohmyzsh.git "$HOME/.oh-my-zsh"
 fi
@@ -60,7 +71,7 @@ if [ ! -d "$ZSH_CUSTOM/plugins/zsh-autosuggestions" ]; then
     git clone https://github.com/zsh-users/zsh-autosuggestions.git "$ZSH_CUSTOM/plugins/zsh-autosuggestions"
 fi
 
-# 规范化一键全量写入 .zshrc，彻底告别动态替换失效、配置挤在同一行的隐患
+# 规范化一键全量写入 .zshrc
 echo "[*] 正在生成标准 .zshrc 配置文件..."
 cat << 'EOF' > "$HOME/.zshrc"
 # ==================== 1. Oh My Zsh 核心框架初始化 ====================
@@ -69,7 +80,7 @@ export ZSH="$HOME/.oh-my-zsh"
 # 选用经典极简主题
 ZSH_THEME="robbyrussell"
 
-# 启用核心功能插件（必须放在 source 之前）
+# 启用核心功能插件
 plugins=(git zsh-syntax-highlighting zsh-autosuggestions)
 
 # 唤醒 Oh My Zsh 核心管理器
@@ -95,14 +106,14 @@ export LANG=zh_CN.UTF-8
 alias exit='apt clean && apt autoclean && exit'
 EOF
 
-# 保持 .bashrc 干净，且幂等安全追加自动切 Zsh 逻辑
+# 保持 .bashrc 干净，且安全追加自动切 Zsh 逻辑
 if [ -f "$HOME/.bashrc" ]; then
     sed -i '/HISTSIZE=/d; /HISTFILESIZE=/d; /exec zsh/d' "$HOME/.bashrc" 2>/dev/null
 fi
 echo "export HISTSIZE=1000" >> "$HOME/.bashrc"
 echo "export HISTFILESIZE=2000" >> "$HOME/.bashrc"
 if ! grep -q "exec zsh" "$HOME/.bashrc"; then
-    echo "exec zsh" >> ~/.bashrc
+    echo "exec zsh" >> "$HOME/.bashrc"
 fi
 
 # ==================== 3. 字体与显示美化 ====================
@@ -111,11 +122,10 @@ mkdir -p ~/.termux
 
 FONT_URL="https://raw.githubusercontent.com/ryanoasis/nerd-fonts/master/patched-fonts/DejaVuSansMono/Regular/DejaVuSansMNerdFont-Regular.ttf"
 
-# 此时 curl 将完美继承脚本顶部的 proxy 变量
 if curl -fsSL "$FONT_URL" -o ~/.termux/font.ttf; then
     echo "[√] 字体下载成功"
 else
-    echo "[×] 远程字体下载失败。请检查你输入的代理端口是否被手机防火墙拦截。"
+    echo "[×] 远程字体下载失败。"
 fi
 
 # 写入暗黑高对比度配色
@@ -147,7 +157,7 @@ termux-reload-settings
 echo "[*] 正在安装常用工具箱..."
 apt install tmux tree lf htop ncdu vim wget -y
 
-# 清理全局 Git 代理配置，避免影响用户后续的日常本地国内 Git 推送
+# 清理全局 Git 代理配置，避免影响日常使用
 git config --global --unset http.proxy
 git config --global --unset https.proxy
 
