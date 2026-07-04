@@ -22,6 +22,17 @@ echo "Acquire::https::Proxy \"http://${PROXY_IP}:${PROXY_PORT}\";" >> $PREFIX/et
 echo "[√] Apt 通道与环境层代理已就绪。"
 echo "--------------------------------------------------------"
 
+# ==================== 1. 物理清空过往残留脏数据与重置官方源 ====================
+echo "[*] 正在物理粉碎可能存在的历史旧锁与残缺索引残留（防前次报错死锁）..."
+rm -rf $PREFIX/var/lib/apt/lists/*
+rm -f $PREFIX/var/lib/dpkg/lock*
+rm -f $PREFIX/var/lib/apt/lists/lock*
+
+echo "[*] 正在强制重置为官方原生高可靠源..."
+cat << 'EOF' > $PREFIX/etc/apt/sources.list
+deb https://packages-cf.termux.org/apt/termux-main stable main
+EOF
+
 echo "[*] 正在通过高可用通道同步官方最新软件包索引..."
 apt update -y
 
@@ -35,16 +46,18 @@ if [ ! -d "$HOME/storage" ]; then
 fi
 
 # ==================== 1. 物理清空过往残留脏数据与重置官方源 ====================
-echo "[*] 正在物理粉碎可能存在的历史旧锁与残缺索引残留（防前次报错死锁）..."
+echo "[*] 再次物理粉碎可能存在的历史旧锁与残缺索引残留（防前次报错死锁）..."
 rm -rf $PREFIX/var/lib/apt/lists/*
 rm -f $PREFIX/var/lib/dpkg/lock*
 rm -f $PREFIX/var/lib/apt/lists/lock*
 
-echo "[*] 正在强制重置为官方原生高可靠源..."
+echo "[*] 再次强制重置为官方原生高可靠源..."
 cat << 'EOF' > $PREFIX/etc/apt/sources.list
 deb https://packages-cf.termux.org/apt/termux-main stable main
 EOF
 
+echo "[*] 正在通过高可用通道同步官方最新软件包索引..."
+apt update -y && apt upgrade -y
 # ==================== 2. 工具箱安装与 Git 代理精准后置注入 ====================
 echo "[*] 正在一次性安装 Zsh, Git 及所有必备工具箱..."
 # 只有在这一行执行完后，系统里才真正拥有 'git' 命令
