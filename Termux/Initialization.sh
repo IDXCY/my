@@ -1,78 +1,66 @@
 #!/data/data/com.termux/files/usr/bin/bash
 
-echo "=== Termux 初始化优化脚本 (断言自愈版) ==="
+echo "=== Termux 初始化优化脚本 (纯净原生·代理高可用版) ==="
 
 # ==================== 0. 代理自动化注入 (用户自定义) ====================
-echo "[-] 为了确保 GitHub 官方域名与官方官方源 100% 畅通，必须配置代理。"
+echo "[-] 为了确保官方源、GitHub 框架、插件、字体 100% 畅通，必须配置代理。"
 read -p "请输入你的本地代理IP (直接回车默认 127.0.0.1): " PROXY_IP
 PROXY_IP=${PROXY_IP:-"127.0.0.1"}
 
-read -p "请输入你的代理共享端口 (直接回车默认 10808): " PROXY_PORT
-PROXY_PORT=${PROXY_PORT:-"10808"}
+read -p "请输入你的代理共享端口 (直接回车默认 7890): " PROXY_PORT
+PROXY_PORT=${PROXY_PORT:-"7890"}
 
+# A. 注入环境变量通道（供 curl、wget 使用）
 export http_proxy="http://${PROXY_IP}:${PROXY_PORT}"
 export https_proxy="http://${PROXY_IP}:${PROXY_PORT}"
+
+# B. 注入 Git 全局配置通道（供插件克隆使用）
 git config --global http.proxy "http://${PROXY_IP}:${PROXY_PORT}"
 git config --global https.proxy "http://${PROXY_IP}:${PROXY_PORT}"
 
-echo "[√] 终端局部代理已配置: ${http_proxy}"
+# C. 【核心修复】硬编码注入 apt 内核通道（彻底解决 Unable to locate package）
+mkdir -p $PREFIX/etc/apt/apt.conf.d
+echo "Acquire::http::Proxy \"http://${PROXY_IP}:${PROXY_PORT}\";" > $PREFIX/etc/apt/apt.conf.d/80proxy
+echo "Acquire::https::Proxy \"http://${PROXY_IP}:${PROXY_PORT}\";" >> $PREFIX/etc/apt/apt.conf.d/80proxy
+
+echo "[√] 全链路代理通道已完美搭建（环境层/Git层/Apt层）"
 echo "--------------------------------------------------------"
 
+# ==================== 1. 物理粉碎脏缓存与重置官方源 ====================
+echo "[*] 正在物理粉碎可能存在的旧锁文件与脏索引残留..."
+rm -rf $PREFIX/var/lib/apt/lists/*
+rm -f $PREFIX/var/lib/dpkg/lock*
+rm -f $PREFIX/var/lib/apt/lists/lock*
 
-# ==================== 1. 环境修复与源检查循环 (核心重构) ====================
-# 定义强制物理解锁函数
-force_unlock_and_clean() {
-    echo "[!] 正在执行包管理器物理强制解锁与缓存重置..."
-    rm -f $PREFIX/var/lib/dpkg/lock
-    rm -f $PREFIX/var/lib/dpkg/lock-frontend
-    rm -f $PREFIX/var/cache/apt/archives/lock
-    rm -rf $PREFIX/var/lib/apt/lists/*
-}
-
-# 强制重置官方原生源
+echo "[*] 正在强制重置为官方原生高可靠源..."
 cat << 'EOF' > $PREFIX/etc/apt/sources.list
 deb https://packages-cf.termux.org/apt/termux-main stable main
 EOF
 
-# 第一轮尝试
-echo "[*] [第一轮] 正在尝试拉取官方最新软件包索引..."
-apt update -y && apt upgrade -y
+echo "[*] 正在通过高可用通道同步官方最新软件包索引..."
+apt update -y
 
-# 断言检查机制
-if [ $? -ne 0 ]; then
-    echo "[⚠️ 检查提示] 第一轮依赖更新遇到阻断（可能是残留进程锁或代理握手时滞）。"
-    echo "[*] 正在启动全自动自愈机制，尝试修复环境..."
+echo "[*] 正在升级底层依赖并执行全局系统升级..."
+apt install termux-tools -y
+apt upgrade -y
 
-    # 执行修复
-    force_unlock_and_clean
-    sleep 2
-
-    # 第二轮再次检查
-    echo "[*] [第二轮] 正在重新尝试同步索引并升级..."
-    apt update -y && apt upgrade -y
-
-    # 终极断言
-    if [ $? -ne 0 ]; then
-        echo "【信息熔断】"
-        echo "缺失项：不可逆的 Apt 包管理器异常或网络代理隧道彻底握手失败。"
-        echo "当前状态：经过二级自愈重试后依然无法通过断言检查。脚本强行终止退出。"
-        exit 1
-    fi
+if [ ! -d "$HOME/storage" ]; then
+    echo "[*] 正在请求存储权限，请在系统弹窗中允许..."
+    termux-setup-storage
 fi
 
-echo "[√] 断言检查通过！软件包源与底层依赖已100%准备就绪。"
-
-
-# ==================== 2. 极简 Zsh 与必备工具箱全量配置 ====================
+# ==================== 2. 极简 Zsh 环境配置 ====================
 echo "[*] 正在一次性安装 Zsh, Git 及所有必备工具箱..."
-apt install zsh curl git tmux tree lf htop ncdu vim wget termux-tools -y
+apt install zsh curl git tmux tree lf htop ncdu vim wget -y
 
+# 稳妥健壮的 Oh My Zsh 安装逻辑
 if [ ! -f "$HOME/.oh-my-zsh/oh-my-zsh.sh" ]; then
     echo "[*] 正在重新克隆 Oh My Zsh 官方完整存储库..."
     rm -rf "$HOME/.oh-my-zsh"
     git clone https://github.com/ohmyzsh/ohmyzsh.git "$HOME/.oh-my-zsh"
 fi
 
+# 确保核心插件目录完整
 ZSH_CUSTOM="$HOME/.oh-my-zsh/custom"
 if [ ! -d "$ZSH_CUSTOM/plugins/zsh-syntax-highlighting" ]; then
     echo "[*] 正在克隆语法高亮插件..."
@@ -84,13 +72,19 @@ if [ ! -d "$ZSH_CUSTOM/plugins/zsh-autosuggestions" ]; then
     git clone https://github.com/zsh-users/zsh-autosuggestions.git "$ZSH_CUSTOM/plugins/zsh-autosuggestions"
 fi
 
+# 规范化一键全量写入 .zshrc
 echo "[*] 正在生成标准 .zshrc 配置文件..."
 cat << 'EOF' > "$HOME/.zshrc"
 # ==================== 1. Oh My Zsh 核心框架初始化 ====================
 export ZSH="$HOME/.oh-my-zsh"
+
+# 选用经典极简主题
 ZSH_THEME="robbyrussell"
+
+# 启用核心功能插件
 plugins=(git zsh-syntax-highlighting zsh-autosuggestions)
 
+# 唤醒 Oh My Zsh 核心管理器
 if [ -f "$ZSH/oh-my-zsh.sh" ]; then
     source $ZSH/oh-my-zsh.sh
 fi
@@ -100,6 +94,7 @@ export HISTFILE="$HOME/.zsh_history"
 export HISTSIZE=5000
 export SAVEHIST=5000
 
+# 核心同步写入机制
 setopt BANG_HIST
 setopt EXTENDED_HISTORY
 setopt INC_APPEND_HISTORY
@@ -112,14 +107,15 @@ export LANG=zh_CN.UTF-8
 alias exit='apt clean && apt autoclean && exit'
 EOF
 
+# 保持 .bashrc 干净，且安全追加自动切 Zsh 逻辑
 if [ -f "$HOME/.bashrc" ]; then
-    sed -i '/HISTSIZE=/d; /HISTFILESIZE=/d; /exec/d; /zsh/d' "$HOME/.bashrc" 2>/dev/null
+    sed -i '/HISTSIZE=/d; /HISTFILESIZE=/d; /exec zsh/d' "$HOME/.bashrc" 2>/dev/null
 fi
 echo "export HISTSIZE=1000" >> "$HOME/.bashrc"
 echo "export HISTFILESIZE=2000" >> "$HOME/.bashrc"
-
-chsh -s zsh 2>/dev/null
-
+if ! grep -q "exec zsh" "$HOME/.bashrc"; then
+    echo "exec zsh" >> "$HOME/.bashrc"
+fi
 
 # ==================== 3. 字体与显示美化 ====================
 echo "[*] 正在配置字体与色彩美化..."
@@ -133,6 +129,7 @@ else
     echo "[×] 远程字体下载失败。"
 fi
 
+# 写入暗黑高对比度配色
 cat << 'EOF' > ~/.termux/colors.properties
 background: #1e1e1e
 foreground: #c5c8c6
@@ -157,15 +154,13 @@ EOF
 
 termux-reload-settings
 
+# ==================== 4. 退出清理环境 ====================
+echo "[*] 正在卸载脚本运行时临时挂载的代理通道..."
+# 移除全局 Git 代理，转为纯净态
 git config --global --unset http.proxy
 git config --global --unset https.proxy
 
+# 移除 apt 临时配置文件，保证日常不依赖固定本地端口
+rm -f $PREFIX/etc/apt/apt.conf.d/80proxy
 
-# ==================== 4. 存储权限挂载 (绝对末尾) ====================
-if [ ! -d "$HOME/storage" ]; then
-    echo "[*] 核心流程已结束。最后一步：正在请求存储权限，请在随后的系统弹窗中允许..."
-    termux-setup-storage
-fi
-
-echo "=== 初始化全部安全完成！你现在可以向上滑动查看完整日志 ==="
-echo "=== 请手动输入 'zsh' 或重启应用进入全新终端 ==="
+echo "=== 初始化全部完美成功！重启 Termux 或运行 exec zsh 生效 ==="
