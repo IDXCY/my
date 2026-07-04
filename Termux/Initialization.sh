@@ -1,7 +1,25 @@
 #!/data/data/com.termux/files/usr/bin/bash
 
 echo "=== Termux 初始化优化脚本 (纯净原生健壮版) ==="
-echo "[提示] 请确保当前环境已配置有效代理（如已设置 git config --global http.proxy 等），否则官方域名极易连接超时。"
+
+# ==================== 0. 代理自动化注入 (用户自定义) ====================
+echo "[-] 为了确保 GitHub 官方域名（框架、插件、字体）100% 下载成功，必须配置代理。"
+read -p "请输入你的本地代理IP (直接回车默认 127.0.0.1): " PROXY_IP
+PROXY_IP=${PROXY_IP:-"127.0.0.1"}
+
+read -p "请输入你的代理共享端口 (直接回车默认 10808): " PROXY_PORT
+PROXY_PORT=${PROXY_PORT:-"10808"}
+
+# 组装代理全局变量
+export http_proxy="http://${PROXY_IP}:${PROXY_PORT}"
+export https_proxy="http://${PROXY_IP}:${PROXY_PORT}"
+
+# 强行将代理注入全局 Git 配置，确保后续克隆畅通无阻
+git config --global http.proxy "http://${PROXY_IP}:${PROXY_PORT}"
+git config --global https.proxy "http://${PROXY_IP}:${PROXY_PORT}"
+
+echo "[√] 终端局部代理已配置: ${http_proxy}"
+echo "--------------------------------------------------------"
 
 # ==================== 1. 环境修复与手动换源 ====================
 echo "[*] 正在更新包管理器并升级换源工具..."
@@ -23,7 +41,7 @@ fi
 echo "[*] 正在安装并配置 Zsh 环境..."
 apt install zsh curl git -y
 
-# 稳妥健壮的 Oh My Zsh 安装逻辑，防止残缺
+# 稳妥健壮的 Oh My Zsh 安装逻辑
 if [ ! -f "$HOME/.oh-my-zsh/oh-my-zsh.sh" ]; then
     echo "[*] 核心框架不存在或破损，正在重新克隆 Oh My Zsh 官方完整存储库..."
     rm -rf "$HOME/.oh-my-zsh"
@@ -51,11 +69,13 @@ export ZSH="$HOME/.oh-my-zsh"
 # 选用经典极简主题
 ZSH_THEME="robbyrussell"
 
-# 启用核心功能插件
+# 启用核心功能插件（必须放在 source 之前）
 plugins=(git zsh-syntax-highlighting zsh-autosuggestions)
 
-# 唤醒 Oh My Zsh
-source $ZSH/oh-my-zsh.sh
+# 唤醒 Oh My Zsh 核心管理器
+if [ -f "$ZSH/oh-my-zsh.sh" ]; then
+    source $ZSH/oh-my-zsh.sh
+fi
 
 # ==================== 2. 历史记录最高优先级硬核配置 ====================
 export HISTFILE="$HOME/.zsh_history"
@@ -82,7 +102,7 @@ fi
 echo "export HISTSIZE=1000" >> "$HOME/.bashrc"
 echo "export HISTFILESIZE=2000" >> "$HOME/.bashrc"
 if ! grep -q "exec zsh" "$HOME/.bashrc"; then
-    echo "exec zsh" >> "$HOME/.bashrc"
+    echo "exec zsh" >> ~/.bashrc
 fi
 
 # ==================== 3. 字体与显示美化 ====================
@@ -91,10 +111,11 @@ mkdir -p ~/.termux
 
 FONT_URL="https://raw.githubusercontent.com/ryanoasis/nerd-fonts/master/patched-fonts/DejaVuSansMono/Regular/DejaVuSansMNerdFont-Regular.ttf"
 
+# 此时 curl 将完美继承脚本顶部的 proxy 变量
 if curl -fsSL "$FONT_URL" -o ~/.termux/font.ttf; then
     echo "[√] 字体下载成功"
 else
-    echo "[×] 远程字体下载失败。请在网络恢复后手动处理。"
+    echo "[×] 远程字体下载失败。请检查你输入的代理端口是否被手机防火墙拦截。"
 fi
 
 # 写入暗黑高对比度配色
@@ -125,5 +146,9 @@ termux-reload-settings
 # ==================== 4. 必备高效工具箱 ====================
 echo "[*] 正在安装常用工具箱..."
 apt install tmux tree lf htop ncdu vim wget -y
+
+# 清理全局 Git 代理配置，避免影响用户后续的日常本地国内 Git 推送
+git config --global --unset http.proxy
+git config --global --unset https.proxy
 
 echo "=== 初始化完成，重启 Termux 或运行 exec zsh 生效 ==="
