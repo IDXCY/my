@@ -1,6 +1,6 @@
 #!/data/data/com.termux/files/usr/bin/bash
 
-echo "=== Termux 初始化优化脚本 (纯净原生健壮版) ==="
+echo "=== Termux 初始化优化脚本 (全自动闭环版) ==="
 
 # ==================== 0. 代理自动化注入 (用户自定义) ====================
 echo "[-] 为了确保 GitHub 官方域名与官方官方源 100% 畅通，必须配置代理。"
@@ -36,21 +36,13 @@ echo "[*] 正在通过代理拉取官方最新软件包索引..."
 # 强制刷新索引
 apt update -y
 
-echo "[*] 正在升级底层换源工具链..."
-apt install termux-tools -y
-
 echo "[*] 正在执行全局软件升级..."
 apt upgrade -y
 
-if [ ! -d "$HOME/storage" ]; then
-    echo "[*] 正在请求存储权限，请在系统弹窗中允许..."
-    termux-setup-storage
-fi
-
-# ==================== 2. 极简 Zsh 环境配置 ====================
-echo "[*] 正在安装并配置 Zsh 环境..."
-# 此时索引已完全正常，这一步将 100% 成功安装
-apt install zsh curl git -y
+# ==================== 2. 极简 Zsh 与必备工具箱全量配置 ====================
+echo "[*] 正在一次性安装 Zsh, Git 及所有必备工具箱..."
+# 此时索引已完全正常，合并安装确保一次性成功，不留断流隐患
+apt install zsh curl git tmux tree lf htop ncdu vim wget termux-tools -y
 
 # 稳妥健壮的 Oh My Zsh 安装逻辑
 if [ ! -f "$HOME/.oh-my-zsh/oh-my-zsh.sh" ]; then
@@ -106,15 +98,15 @@ export LANG=zh_CN.UTF-8
 alias exit='apt clean && apt autoclean && exit'
 EOF
 
-# 保持 .bashrc 干净，且安全追加自动切 Zsh 逻辑
+# 保持 .bashrc 干净，不再使用 exec zsh 物理销毁缓冲区
 if [ -f "$HOME/.bashrc" ]; then
-    sed -i '/HISTSIZE=/d; /HISTFILESIZE=/d; /exec zsh/d' "$HOME/.bashrc" 2>/dev/null
+    sed -i '/HISTSIZE=/d; /HISTFILESIZE=/d; /exec/d; /zsh/d' "$HOME/.bashrc" 2>/dev/null
 fi
 echo "export HISTSIZE=1000" >> "$HOME/.bashrc"
 echo "export HISTFILESIZE=2000" >> "$HOME/.bashrc"
-if ! grep -q "exec zsh" "$HOME/.bashrc"; then
-    echo "exec zsh" >> "$HOME/.bashrc"
-fi
+
+# 稳妥安全的默认 Shell 切换，不伤及当前滚动历史
+chsh -s zsh 2>/dev/null
 
 # ==================== 3. 字体与显示美化 ====================
 echo "[*] 正在配置字体与色彩美化..."
@@ -153,12 +145,15 @@ EOF
 
 termux-reload-settings
 
-# ==================== 4. 必备高效工具箱 ====================
-echo "[*] 正在安装常用工具箱..."
-apt install tmux tree lf htop ncdu vim wget -y
-
 # 清理全局 Git 代理配置，避免影响日常使用
 git config --global --unset http.proxy
 git config --global --unset https.proxy
 
-echo "=== 初始化完成，重启 Termux 或运行 exec zsh 生效 ==="
+# ==================== 4. 存储权限挂载 (强制移到绝对末尾) ====================
+if [ ! -d "$HOME/storage" ]; then
+    echo "[*] 核心流程已结束。最后一步：正在请求存储权限，请在随后的系统弹窗中允许..."
+    termux-setup-storage
+fi
+
+echo "=== 初始化全部安全完成！由于未采用破坏性 exec，你现在可以向上滑动查看完整日志 ==="
+echo "=== 请手动输入 'zsh' 或重启应用进入全新终端 ==="
