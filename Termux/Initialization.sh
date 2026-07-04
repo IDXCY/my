@@ -10,15 +10,11 @@ PROXY_IP=${PROXY_IP:-"127.0.0.1"}
 read -p "请输入你的代理共享端口 (直接回车默认 7890): " PROXY_PORT
 PROXY_PORT=${PROXY_PORT:-"7890"}
 
-# A. 注入环境变量通道（供 curl、wget 使用）
+# 注入环境变量通道（供 curl、wget 使用）
 export http_proxy="http://${PROXY_IP}:${PROXY_PORT}"
 export https_proxy="http://${PROXY_IP}:${PROXY_PORT}"
 
-# B. 注入 Git 全局配置通道（供插件克隆使用）
-git config --global http.proxy "http://${PROXY_IP}:${PROXY_PORT}"
-git config --global https.proxy "http://${PROXY_IP}:${PROXY_PORT}"
-
-# C. 【核心修复】硬编码注入 apt 内核通道（彻底解决 Unable to locate package）
+# 【核心修复】硬编码注入 apt 内核通道（彻底解决 Unable to locate package）
 mkdir -p $PREFIX/etc/apt/apt.conf.d
 echo "Acquire::http::Proxy \"http://${PROXY_IP}:${PROXY_PORT}\";" > $PREFIX/etc/apt/apt.conf.d/80proxy
 echo "Acquire::https::Proxy \"http://${PROXY_IP}:${PROXY_PORT}\";" >> $PREFIX/etc/apt/apt.conf.d/80proxy
@@ -52,6 +48,10 @@ fi
 # ==================== 2. 极简 Zsh 环境配置 ====================
 echo "[*] 正在一次性安装 Zsh, Git 及所有必备工具箱..."
 apt install zsh curl git tmux tree lf htop ncdu vim wget -y
+
+# 注入 Git 全局配置通道（供插件克隆使用）
+git config --global http.proxy "http://${PROXY_IP}:${PROXY_PORT}"
+git config --global https.proxy "http://${PROXY_IP}:${PROXY_PORT}"
 
 # 稳妥健壮的 Oh My Zsh 安装逻辑
 if [ ! -f "$HOME/.oh-my-zsh/oh-my-zsh.sh" ]; then
