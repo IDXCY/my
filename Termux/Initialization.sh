@@ -27,12 +27,12 @@ echo "[*] 正在安装并配置 Zsh 环境..."
 apt install zsh curl git -y
 
 if [ ! -d "$HOME/.oh-my-zsh" ]; then
-    # 使用国内加速节点下载 Oh My Zsh 安装脚本
+    # 1. 使用国内可直连的加速节点下载 Oh My Zsh 安装脚本
     sh -c "$(curl -fsSL https://github.moeyy.xyz/https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" -- --unattended
 
-    # 插件克隆同步使用加速通道，确保 100% 成功
-    git clone https://github.moeyy.xyz/https://github.com/zsh-users/zsh-syntax-highlighting.git ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-syntax-highlighting
-    git clone https://github.moeyy.xyz/https://github.com/zsh-users/zsh-autosuggestions ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-autosuggestions
+    # 2. 将插件克隆源彻底替换为 Gitee 官方镜像通道，确保 100% 成功
+    git clone https://gitee.com/mirrors/zsh-syntax-highlighting.git ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-syntax-highlighting
+    git clone https://gitee.com/mirrors/zsh-autosuggestions.git ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-autosuggestions
 
     sed -i 's/plugins=(git)/plugins=(git zsh-syntax-highlighting zsh-autosuggestions)/' ~/.zshrc
 fi
