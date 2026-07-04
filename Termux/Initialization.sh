@@ -26,16 +26,13 @@ fi
 echo "[*] 正在安装并配置 Zsh 环境..."
 apt install zsh curl git -y
 
-if [ ! -d "$HOME/.oh-my-zsh" ]; then
-    # 1. 使用国内可直连的加速节点下载 Oh My Zsh 安装脚本
-    sh -c "$(curl -fsSL https://github.moeyy.xyz/https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" -- --unattended
+# 安装 Oh My Zsh（使用稳定加速源）
+sh -c "$(curl -fsSL https://ghp.ci/https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" -- --unattended
 
-    # 2. 将插件克隆源彻底替换为 Gitee 官方镜像通道，确保 100% 成功
-    git clone https://gitee.com/mirrors/zsh-syntax-highlighting.git ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-syntax-highlighting
-    git clone https://gitee.com/mirrors/zsh-autosuggestions.git ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-autosuggestions
+# 插件使用 Gitee 镜像
+git clone https://gitee.com/mirrors/zsh-syntax-highlighting.git ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-syntax-highlighting
+git clone https://gitee.com/mirrors/zsh-autosuggestions.git ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-autosuggestions
 
-    sed -i 's/plugins=(git)/plugins=(git zsh-syntax-highlighting zsh-autosuggestions)/' ~/.zshrc
-fi
 
 # 历史记录数量限制（保留本地持久化，仅作上限截断，不影响上下键翻阅）
 for rfile in "$HOME/.bashrc" "$HOME/.zshrc"; do
@@ -64,7 +61,7 @@ fi
 echo "[*] 正在配置字体与色彩美化..."
 mkdir -p ~/.termux
 
-FONT_URL="https://github.moeyy.xyz/https://raw.githubusercontent.com/ryanoasis/nerd-fonts/master/patched-fonts/DejaVuSansMono/Regular/DejaVuSansMonoNerdFont-Regular.ttf"
+FONT_URL="https://mirror.ghproxy.com/https://raw.githubusercontent.com/ryanoasis/nerd-fonts/master/patched-fonts/DejaVuSansMono/Regular/DejaVuSansMonoNerdFont-Regular.ttf"
 
 if curl -fsSL "$FONT_URL" -o ~/.termux/font.ttf; then
     echo "[√] 字体下载成功"
@@ -102,6 +99,6 @@ termux-reload-settings
 
 # ==================== 4. 必备高效工具箱 ====================
 echo "[*] 正在安装常用工具箱..."
-apt install tmux tree lf htop tldr ncdu vim wget -y
+apt install tmux tree lf htop ncdu vim wget -y
 
 echo "=== 初始化完成，重启 Termux 或运行 exec zsh 生效 ==="
