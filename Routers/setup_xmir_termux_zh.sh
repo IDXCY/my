@@ -12,7 +12,7 @@ echo "========================================="
 # 1. 升级系统并安装基础依赖 (增加 unzip/curl 保底，防止上游第三方补丁依赖)
 echo "[1/4] 正在安装系统依赖 (Python, Git, GCC)..."
 pkg update -y -q || echo "提示：软件源索引可能被锁或跳过，尝试直接安装依赖..."
-pkg install -y -q python git clang make libffi openssl-tool libcrypt ndk-sysroot unzip curl >/dev/null 2>&1
+pkg install -y -q python git clang cmake make libffi openssl-tool libcrypt ndk-sysroot unzip curl >/dev/null 2>&1
 
 # 2. 克隆或增量更新原项目仓库
 TARGET_DIR="xmir-patcher"
