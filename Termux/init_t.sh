@@ -174,3 +174,6 @@ rm -f $PREFIX/etc/apt/apt.conf.d/80proxy
 termux-change-repo
 
 echo "=== 初始化全部完美成功！重启 Termux 或运行 exec zsh 生效 ==="
+
+# 清理下载的安装脚本自身
+rm -f "$HOME/init_t.sh" 2>/dev/null || true
