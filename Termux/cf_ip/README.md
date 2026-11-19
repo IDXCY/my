@@ -11,7 +11,7 @@
 ## 一键下载并运行安装脚本
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/IDXCY/my/main/Termux-WSL/cf-ip/install.sh)
+bash <(curl -fsSL https://cdn.jsdelivr.net/gh/IDXCY/my/main/Termux/cf_ip/install.sh)
 ```
 
 安装完成后运行：

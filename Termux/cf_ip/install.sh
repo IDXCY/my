@@ -4,7 +4,7 @@ set -e
 
 INSTALL_DIR="$HOME/cf-ip"
 
-RUN_URL="https://raw.githubusercontent.com/IDXCY/my/main/Termux-WSL/cf-ip/run.sh"
+RUN_URL="https://cdn.jsdelivr.net/gh/IDXCY/my/tree/main/Termux/cf_ip/run.sh"
 
 echo
 echo "====================================="
