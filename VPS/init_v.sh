@@ -7,109 +7,85 @@ err()  { echo -e "\033[1;31m[ERR]\033[0m $*" >&2; }
 
 [ "$(id -u)" -ne 0 ] && err "请使用 root 运行。" && exit 1
 
-# ── 交互: SSH 端口 ─────────────────────────────────────
 DEF_SSH=22000
 read -rp "新 SSH 端口 [${DEF_SSH}]: " SSH_NEW_PORT
 SSH_NEW_PORT=${SSH_NEW_PORT:-$DEF_SSH}
-while ! [[ "$SSH_NEW_PORT" =~ ^[0-9]+$ ]] || \
-      [ "$SSH_NEW_PORT" -lt 1 ] || [ "$SSH_NEW_PORT" -gt 65535 ]; do
+while ! [[ "$SSH_NEW_PORT" =~ ^[0-9]+$ ]] || [ "$SSH_NEW_PORT" -lt 1 ] || [ "$SSH_NEW_PORT" -gt 65535 ]; do
     warn "端口无效 (1-65535)"
     read -rp "新 SSH 端口 [${DEF_SSH}]: " SSH_NEW_PORT
     SSH_NEW_PORT=${SSH_NEW_PORT:-$DEF_SSH}
 done
 
-log "=== VPS 初始化 (1核/1.2G/17G/双栈/230ms跨国) ==="
+log "=== VPS 初始化(1核/1.2G/17G/纯zram/双栈) ==="
 
-# ═════════════  1. 系统更新  ══════════════════════
+# ==================== 1. 系统更新 ====================
 export DEBIAN_FRONTEND=noninteractive
-export NEEDRESTART_MODE=a   # 禁用 needrestart 弹窗 (会话级)
-
-# 持久化 needrestart 静默 (重启后也生效)
+export NEEDRESTART_MODE=a
 mkdir -p /etc/needrestart/conf.d/
-echo '$nrconf{restart} = "a";' > /etc/needrestart/conf.d/99-automation.conf 2>/dev/null || true
+echo '$nrconf{restart} = "a";' > /etc/needrestart/conf.d/99-automation.conf
 
-apt update -y && apt upgrade -y
-apt install -y curl tar wget tmux iperf3 mtr-tiny net-tools dnsutils lsof git sudo cron
+apt update -y
+apt upgrade -y
+apt install -y curl wget tmux mtr-tiny dnsutils htop ufw cron
 
-# ════  2. 内存: zram + swap + earlyoom  ═══════════════
-log "配置内存策略: zram(压缩优先) + swap(磁盘兜底) + earlyoom(防卡死)"
-
-# zram: 用 CPU 压缩换内存空间，1 核机器避免过度压缩
+# ==================== 2. 内存: 纯物理内存 + zram + earlyoom(不用磁盘swap) ====================
+# 抹除可能残留的磁盘 Swap 挂载，确保纯 zRAM 高速运行
+if [ -f /swapfile ]; then
+    swapoff /swapfile 2>/dev/null || true
+    rm -f /swapfile
+    sed -i '/\/swapfile/d' /etc/fstab
+fi
+log "配置 zram..."
 apt install -y zram-tools
 cat > /etc/default/zramswap <<EOF
 ALGO=zstd
 PERCENT=100
-PRIORITY=100
 EOF
-systemctl restart zramswap
+systemctl enable --now zramswap
 
-# swap: 磁盘兜底，优先级低于 zram
-if [ ! -f /swapfile ]; then
-    dd if=/dev/zero of=/swapfile bs=1M count=512
-    chmod 600 /swapfile && mkswap /swapfile
-    swapon -p 10 /swapfile
-    echo '/swapfile none swap sw,pri=10 0 0' >> /etc/fstab
+if grep -q "^vm.swappiness" /etc/sysctl.conf; then
+    sed -i 's/^vm.swappiness=.*/vm.swappiness=100/' /etc/sysctl.conf
+else
+    echo "vm.swappiness=100" >> /etc/sysctl.conf
 fi
+# 只有1核, zram压缩要吃CPU。如果之后 htop 里发现 CPU 经常被压缩占满,
+# 把这个数字调低(比如60), 让系统没那么积极地换页
 
-# swappiness=60: 平衡压缩与换页，避免 1 核 CPU 争抢
-{
-    grep -q "^vm.swappiness" /etc/sysctl.conf \
-        && sed -i 's/^vm.swappiness=.*/vm.swappiness=60/' /etc/sysctl.conf \
-
-        || echo "vm.swappiness=60" >> /etc/sysctl.conf
-}
-
-# earlyoom: 内存<10% 时秒级杀进程，保护 sshd 免杀
+log "配置 earlyoom(内存<10%时优先保护sshd, 抢在内核OOM killer之前)..."
 apt install -y earlyoom
 cat > /etc/default/earlyoom <<'EOF'
-EARLYOOM_ARGS="-r 60 -m 10 -s 10 --prefer '^(sshd?)$' --avoid '^(systemd|dbus|cron|earlyoom)$'"
+EARLYOOM_ARGS="-r 60 -m 10 -s 10 --prefer ^(sshd?)$ --avoid ^(systemd|dbus|cron|earlyoom)$"
 EOF
 systemctl enable --now earlyoom
 
-# ═══  3. 网络: BBR + 缓冲区(BDP≈21.6MB,取24MB) + 安全加固  ════
-log "配置网络: BBR + 24MB 缓冲区 + TCP 加固"
-
-modprobe tcp_bbr 2>/dev/null || true
-grep -qxF 'tcp_bbr' /etc/modules-load.d/modules.conf 2>/dev/null \
-
-    || echo 'tcp_bbr' >> /etc/modules-load.d/modules.conf
-
+# ==================== 3. 网络参数(精简版, 只留个人轻量使用真正用得上的) ====================
+log "配置 BBR 与网络参数..."
 cat > /etc/sysctl.d/99-network-tuning.conf <<'EOF'
 # 拥塞控制
 net.core.default_qdisc = fq
 net.ipv4.tcp_congestion_control = bbr
 net.ipv4.tcp_fastopen = 3
-net.core.netdev_max_backlog = 10000
-net.ipv4.tcp_sack = 1
-net.ipv4.tcp_dsack = 1
+net.ipv4.tcp_slow_start_after_idle = 0
 
-# 缓冲区 (BDP=750Mbps×230ms≈21.6MB, 取 24MB)
+# PLPMTUD: 常规ICMP路径MTU探测被中间设备屏蔽时, 让内核自己摸出实际可通过的包大小
+net.ipv4.tcp_mtu_probing = 1
+
+# 缓冲区上限(按700-800Mbps x 230ms估算BDP≈21.6MB, 取24MB留余量)
+# 这只是上限不是预分配, 某条链路实际跑不满, 这个值放着也没有副作用
 net.core.rmem_max = 25165824
 net.core.wmem_max = 25165824
 net.ipv4.tcp_rmem = 4096 131072 25165824
 net.ipv4.tcp_wmem = 4096 65536 25165824
 net.ipv4.tcp_mem = 8192 32768 51200
 
-# 连接管理
-net.core.somaxconn = 8192
-net.ipv4.tcp_max_syn_backlog = 8192
-net.ipv4.ip_local_port_range = 1024 65535
-net.ipv4.tcp_max_tw_buckets = 32768
-net.ipv4.tcp_tw_reuse = 1
-net.ipv4.tcp_fin_timeout = 15
-
-# Keepalive (600s/10s/5次: 快速清理死连接)
+# 连接质量不稳时更快发现死连接, 不用等默认2小时
 net.ipv4.tcp_keepalive_time = 600
 net.ipv4.tcp_keepalive_intvl = 10
 net.ipv4.tcp_keepalive_probes = 5
 
-# 文件描述符
-fs.file-max = 1048576
-
-# 安全加固
+# 基础安全加固
 net.ipv4.tcp_syncookies = 1
 net.ipv4.tcp_rfc1337 = 1
-net.ipv4.tcp_max_orphans = 16384
 net.ipv4.icmp_echo_ignore_broadcasts = 1
 net.ipv4.icmp_ignore_bogus_error_responses = 1
 net.ipv4.conf.all.accept_redirects = 0
@@ -120,8 +96,6 @@ net.ipv4.conf.all.accept_source_route = 0
 net.ipv4.conf.default.accept_source_route = 0
 net.ipv4.conf.all.rp_filter = 1
 net.ipv4.conf.default.rp_filter = 1
-net.ipv4.conf.all.log_martians = 1
-net.ipv4.conf.default.log_martians = 1
 net.ipv6.conf.all.accept_redirects = 0
 net.ipv6.conf.default.accept_redirects = 0
 net.ipv6.conf.all.accept_source_route = 0
@@ -129,128 +103,96 @@ net.ipv6.conf.default.accept_source_route = 0
 net.ipv6.conf.all.use_tempaddr = 0
 net.ipv6.conf.default.use_tempaddr = 0
 EOF
-sysctl --system 2>&1 | grep -v "No such file or directory" || true
+sysctl --system
+# 没加 accept_ra=0: 你的v6是服务商分配的/64段, 手动配置了多个地址在用,
+# 路由到底靠不靠RA不确定, 贸然关掉有直接断v6的风险
 
-# 进程级文件描述符限制
-cat > /etc/security/limits.d/99-fd.conf <<EOF
-*    soft    nofile    524288
-*    hard    nofile    1048576
-root soft    nofile    524288
-root hard    nofile    1048576
-EOF
-mkdir -p /etc/systemd/system.conf.d
-cat > /etc/systemd/system.conf.d/99-fd.conf <<EOF
-[Manager]
-DefaultLimitNOFILE=524288:1048576
-EOF
-
-# ═════════  4. IPv4/IPv6 出站优先级  ════════════════════════
-log "测试 v4/v6 出站质量..."
-host="www.cloudflare.com"
-v4=$(curl -4 -o /dev/null -s --connect-timeout 3 -w '%{time_connect}' "https://${host}" 2>/dev/null) || v4=""
-v6=$(curl -6 -o /dev/null -s --connect-timeout 3 -w '%{time_connect}' "https://${host}" 2>/dev/null) || v6=""
-[ -z "$v4" ] && v4="999"
-[ -z "$v6" ] && v6="999"
-echo "  IPv4: ${v4}s | IPv6: ${v6}s"
-
-sed -i '/^precedence ::ffff:0:0\/96/d' /etc/gai.conf
-if awk "BEGIN{exit !($v4 < $v6)}"; then
-    echo "precedence ::ffff:0:0/96  100" >> /etc/gai.conf
-    log "IPv4 优先"
-else
-    log "IPv6 优先 (或 v4 不可用)"
-fi
-
-# ═════════  5. 日志与定时清理  ═══════════════════════════════
-log "限制日志体积 + 定时清理"
-
+# ==================== 4. 磁盘、日志、定时清理 ====================
+log "限制日志体积、定时清理..."
 mkdir -p /etc/systemd/journald.conf.d
 cat > /etc/systemd/journald.conf.d/size.conf <<EOF
 [Journal]
 SystemMaxUse=100M
-RuntimeMaxUse=50M
 EOF
 systemctl restart systemd-journald
 
 CRON="0 4 * * 0 apt-get autoremove -y && apt-get autoclean -y && journalctl --vacuum-time=7d"
-(crontab -l 2>/dev/null | grep -vF "$CRON"; echo "$CRON") | crontab -
+EXISTING_CRON=$(crontab -l 2>/dev/null | grep -vF "$CRON" || true)
+{ [ -n "$EXISTING_CRON" ] && echo "$EXISTING_CRON"; echo "$CRON"; } | crontab -
 
-# ═══════════  6. 自动安全更新  ═══════════════════════════
-log "启用自动安全更新"
-
-apt install -y unattended-upgrades apt-listchanges
-cat > /etc/apt/apt.conf.d/50unattended-upgrades <<'EOAPT'
+# ==================== 5. 自动安全更新 ====================
+log "配置自动安全更新..."
+apt install -y unattended-upgrades
+cat > /etc/apt/apt.conf.d/50unattended-upgrades <<EOF
 Unattended-Upgrade::Allowed-Origins {
-    "${distro_id}:${distro_codename}";
-    "${distro_id}:${distro_codename}-security";
+    "\${distro_id}:\${distro_codename}";
+    "\${distro_id}:\${distro_codename}-security";
 };
 Unattended-Upgrade::Remove-Unused-Dependencies "true";
 Unattended-Upgrade::Automatic-Reboot "false";
-EOAPT
+EOF
 cat > /etc/apt/apt.conf.d/20auto-upgrades <<EOF
 APT::Periodic::Update-Package-Lists "1";
 APT::Periodic::Unattended-Upgrade "1";
 EOF
 
-# ════════════  7. 终端美化  ═══════════════════════════
-log "安装 starship + 常用 alias"
+# ==================== 6. 终端美化与高级 Shell 部署 (Zsh + Oh My Zsh) ====================
+log "安装并配置 Zsh 软件生态..."
 
-if curl -fsSL https://starship.rs/install.sh -o /tmp/starship.sh; then
-    sh /tmp/starship.sh -y
-    grep -qxF 'eval "$(starship init bash)"' ~/.bashrc \
+# 1. 安装 Zsh 核心及基础依赖，并强行将 root 的默认 Shell 修改为 Zsh
+apt install -y zsh git curl
+chsh -s $(which zsh)
 
-        || echo 'eval "$(starship init bash)"' >> ~/.bashrc
-else
-    warn "starship 下载失败，稍后手动安装"
+# 2. 自动化拉取 Oh My Zsh 框架
+# 增加 --unattended 参数防止脚本在此处弹出交互式终端打断你的自动化流程
+log "正在拉取 Oh My Zsh 官方框架..."
+if ! sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended; then
+    warn "官方 Oh My Zsh 下载超时，尝试切换国内 Gitee 镜像加速源..."
+    sh -c "$(curl -fsSL https://gitee.com/mirrors/ohmyzsh/raw/master/tools/install.sh)" "" --unattended || true
 fi
-rm -f /tmp/starship.sh
 
-grep -qxF "alias ll='ls -alF --color=auto'" ~/.bashrc || cat >> ~/.bashrc <<'EOF'
+# 3. 异步拉取高级自愈插件（灰色阴影自动补全 + 实时代码高亮）
+log "正在注入高级补全与高亮软件..."
+ZSH_CUSTOM_DIR="${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins"
+mkdir -p "$ZSH_CUSTOM_DIR"
+
+# 针对 RackNerd 跨国网络长途抖动，采用或门逻辑防止下载失败中断整个脚本
+git clone --depth=1 https://github.com/zsh-users/zsh-autosuggestions "$ZSH_CUSTOM_DIR/zsh-autosuggestions" 2>/dev/null || true
+git clone --depth=1 https://github.com/zsh-users/zsh-syntax-highlighting "$ZSH_CUSTOM_DIR/zsh-syntax-highlighting" 2>/dev/null || true
+
+# 4. 强行固化配置到新生成的 ~/.zshrc 配置文件中
+if [ -f ~/.zshrc ]; then
+    # 动态将默认的 plugins=(git) 替换为挂载了高级补全和高亮的完整软件列表
+    sed -i 's/plugins=(git)/plugins=(git zsh-autosuggestions zsh-syntax-highlighting)/' ~/.zshrc
+
+    # 注入标准高亮彩色别名（Alias）
+    grep -qxF "alias ll='ls -alF --color=auto'" ~/.zshrc || cat >> ~/.zshrc <<'EOF'
 alias ll='ls -alF --color=auto'
 alias grep='grep --color=auto'
 EOF
-apt install -y htop
+else
+    warn "未检测到 ~/.zshrc，可能框架未能成功写入"
+fi
 
-# ══════════  8. 时区与精简服务  ══════════════════════════
-log "设置时区 + 禁用无用服务"
-
-timedatectl set-timezone Asia/Shanghai 2>/dev/null \
-
-    || ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
-
-# VPS 无需这些服务，mask 防止被依赖拉起
-for svc in ModemManager pollinate motd-news.timer; do
-    systemctl disable --mask "$svc" 2>/dev/null || true
-done
-
-# ═════════  9. SSH 加固  ════════════════════════════════
-log "配置 SSH (端口: ${SSH_NEW_PORT})"
-
+# ==================== 7. SSH 安全加固(密钥+改端口+防火墙, 不装fail2ban) ====================
+log "配置 SSH(端口: ${SSH_NEW_PORT})..."
 mkdir -p ~/.ssh && chmod 700 ~/.ssh
 touch ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys
 
-SKIP_KEY=0
+SKIP_KEY_HARDENING=0
 if [ ! -s ~/.ssh/authorized_keys ]; then
-    echo "未检测到公钥，请粘贴 SSH 公钥后回车:"
+    echo "未检测到公钥,请粘贴你的 SSH 公钥后回车:"
     read -r pubkey
     if [[ "$pubkey" =~ ^(ssh-ed25519|ssh-rsa|ecdsa-sha2|sk-ssh-ed25519) ]]; then
         echo "$pubkey" >> ~/.ssh/authorized_keys
         log "公钥已写入"
     else
-        warn "未识别有效公钥，跳过关闭密码登录 (防锁死)"
-        SKIP_KEY=1
+        warn "未识别到有效公钥,跳过密码登录关闭步骤,避免锁死"
+        SKIP_KEY_HARDENING=1
     fi
 fi
 
-# 防火墙: limit = 30s/6次连接限制，零成本防爆破
-apt install -y ufw
-ufw default deny incoming
-ufw default allow outgoing
-ufw limit 22/tcp comment 'old-ssh-temp'
-ufw limit "${SSH_NEW_PORT}/tcp" comment 'new-ssh'
-ufw --force enable
-
-# sshd OOM 免死金牌 (兼容两种服务名)
+# sshd OOM保护: 内存告急时不会因为sshd被kill导致彻底失联
 for name in ssh sshd; do
     dir="/etc/systemd/system/${name}.service.d"
     mkdir -p "$dir"
@@ -261,73 +203,51 @@ EOF
 done
 systemctl daemon-reload
 
-if [ "$SKIP_KEY" -eq 0 ]; then
-    # 清理主配置中的冲突项，保留 Port 22 兜底
-    sed -i '/^Port /d; /^MaxAuthTries /d; /^LoginGraceTime /d; /^PasswordAuthentication /d; /^PubkeyAuthentication/d; /^MaxStartups /d' \
-        /etc/ssh/sshd_config
-    grep -q '^Port 22' /etc/ssh/sshd_config || echo "Port 22" >> /etc/ssh/sshd_config
+# limit而不是allow: 对同一来源短时间内的连接尝试做频次限制, 零额外进程,
+# 算是不装fail2ban情况下的轻量替代
+ufw default deny incoming
+ufw default allow outgoing
+ufw limit 22/tcp comment 'old-ssh-temp'
+ufw limit "${SSH_NEW_PORT}/tcp" comment 'new-ssh'
+ufw --force enable
 
-    # 确保 drop-in 目录被加载
-    grep -q '^Include /etc/ssh/sshd_config.d' /etc/ssh/sshd_config \
-
-        || sed -i '1i Include /etc/ssh/sshd_config.d/*.conf' /etc/ssh/sshd_config
-
-    # 定制配置 (Port 22 在主配置兜底，此处只放新端口)
-    cat > /etc/ssh/sshd_config.d/99-custom-security.conf <<EOF
+if [ "$SKIP_KEY_HARDENING" -eq 0 ]; then
+    cp /etc/ssh/sshd_config /etc/ssh/sshd_config.bak
+    sed -i '/^Port /d; /^MaxAuthTries /d; /^LoginGraceTime /d; /^PasswordAuthentication /d; /^MaxStartups /d' /etc/ssh/sshd_config
+    cat >> /etc/ssh/sshd_config <<EOF
+Port 22
 Port ${SSH_NEW_PORT}
 MaxAuthTries 3
-MaxStartups 3:50:10
 LoginGraceTime 30
-PubkeyAuthentication yes
+MaxStartups 3:50:10
 PasswordAuthentication no
-ClientAliveInterval 300
-ClientAliveCountMax 2
 EOF
-    sshd -t && systemctl restart sshd && log "sshd 配置通过，已重启 (双端口监听)" \
-
-        || err "sshd 配置语法错误，已跳过重启"
+    if sshd -t; then
+        systemctl restart sshd
+        log "sshd 配置检查通过,已重启,新旧端口同时监听"
+    else
+        err "sshd 配置语法有误,已跳过重启,备份在 sshd_config.bak"
+    fi
 fi
 
-# ═══════  10. 收尾  ═════════════════════════════════
-apt-get autoremove -y >/dev/null 2>&1
-apt-get autoclean -y >/dev/null 2>&1
-rm -rf /tmp/* /var/tmp/* 2>/dev/null || true
+# ==================== 收尾 ====================
+apt-get autoremove -y
+apt-get autoclean -y
 
-cat <<'SUMMARY'
-
-  ┌─────────────────────────────────────┐
-  │         ✅ 初始化完成               │
-  └─────────────────────────────────────┘
-  ├─ BBR + 24MB 缓冲区
-  ├─ zram(zstd) + swap(512MB)
-  ├─ earlyoom 防卡死
-  ├─ TCP Keepalive 600s / FD 524288
-  ├─ UFW + limit 防爆破
-  ├─ sshd OOM 保护
-  ├─ 自动安全更新
-  └─ 日志 100M + 每周清理
-
-SUMMARY
-
-if [ "$SKIP_KEY" -eq 0 ]; then
-    cat <<EOF
-  ⚠️  请【新开终端】验证登录:
-     ssh -p ${SSH_NEW_PORT} 用户名@服务器IP
-
-  确认无误后执行收尾:
-     ufw delete limit 22/tcp
-     sed -i '/^Port 22\$/d' /etc/ssh/sshd_config
-     systemctl restart sshd
-
-EOF
-fi
-
-echo "  执行 source ~/.bashrc 让终端美化生效"
 echo ""
-
-# ══════ 11. 自毁 ══════════════════════════
-SELF="$(readlink -f "$0" 2>/dev/null || echo "$0")"
-[ -f "$SELF" ] && [ "$SELF" != "bash" ] && [ "$SELF" != "-bash" ] && [ "$SELF" != "/dev/stdin" ] && {
-    log "删除脚本: ${SELF}"
-    rm -f "$SELF"
-}
+log "=== 初始化完成 ==="
+if [ "$SKIP_KEY_HARDENING" -eq 0 ]; then
+    echo "[重要] 请【新开一个终端】测试: ssh -p ${SSH_NEW_PORT} 用户名@服务器IP"
+    echo "用 ss -tlnp | grep sshd 确认22和${SSH_NEW_PORT}是否都在监听"
+    echo "确认能登录后手动执行收尾:"
+    echo "    ufw delete limit 22/tcp"
+    echo "    sed -i '/^Port 22\$/d' /etc/ssh/sshd_config"
+    echo "    systemctl restart sshd"
+fi
+echo "执行 source ~/.zshrc 让终端美化生效"
+echo ""
+echo "[网络] v4/v6具体走哪个、线路质量如何, 脚本不自动判断了, 在你自己电脑上手动测(不是在VPS上跑):"
+echo "    bash <(curl -Ls IP.Check.Place)      # IP质量体检, 默认双栈"
+echo "    bash <(curl -Ls Net.Check.Place)     # 更全: BGP/回程路由/分地区测速, 耗时8-10分钟"
+echo "两个都是 github.com/xykt 的开源脚本, 测完自己决定SSH以后主要用哪个地址连"
+echo "还要修改优化dns配置，比如v4还是v6优先"
