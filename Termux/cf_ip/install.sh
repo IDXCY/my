@@ -54,10 +54,10 @@ ARCH=$(uname -m)
 
 case "$ARCH" in
     aarch64|arm64)
-        CFST_URL="https://cdn.jsdelivr.net/gh/XIU2/CloudflareSpeedTest/releases/download/latest/cfst_linux_arm64.tar.gz"
+        CFST_URL="https://github.com/XIU2/CloudflareSpeedTest/releases/latest/download/cfst_linux_arm64.tar.gz"
         ;;
     x86_64|amd64)
-        CFST_URL="https://cdn.jsdelivr.net/gh/XIU2/CloudflareSpeedTest/releases/download/latest/cfst_linux_amd64.tar.gz"
+        CFST_URL="https://github.com/XIU2/CloudflareSpeedTest/releases/latest/download/cfst_linux_amd64.tar.gz"
         ;;
     *)
         echo "不支持架构: $ARCH"
