@@ -13,9 +13,8 @@
 github源
 
 ```bash
-bash <(curl -fsSL https://cdn.jsdelivr.net/gh/IDXCY/my@main/Termux/cf_ip/install.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/IDXCY/my/main/Termux/cf_ip/install.sh)
 ```
-
 加速源
 
 ```bash
