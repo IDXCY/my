@@ -6,21 +6,19 @@ INSTALL_DIR="$HOME/cf-ip"
 
 RUN_URL="https://cdn.jsdelivr.net/gh/IDXCY/my@main/Termux/cf_ip/run.sh"
 
-echo
-echo "====================================="
-echo " Cloudflare IP Auto Installer"
-echo "====================================="
-echo
+# 1. 在切换目录前记录安装脚本的绝对路径
+SELF_PATH=""
+if [ -f "$0" ]; then
+    SELF_PATH="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
+fi
 
-command -v curl >/dev/null 2>&1 || {
-    echo "缺少 curl"
-    exit 1
-}
-
-command -v tar >/dev/null 2>&1 || {
-    echo "缺少 tar"
-    exit 1
-}
+# 检查必要依赖
+for cmd in curl tar awk grep; do
+    command -v "$cmd" >/dev/null 2>&1 || {
+        echo "缺少必要命令: $cmd"
+        exit 1
+    }
+done
 
 echo "[1/6] 创建目录..."
 
@@ -65,16 +63,14 @@ case "$ARCH" in
         ;;
 esac
 
-curl -L "$CFST_URL" -o cfst.tar.gz
-
-tar -zxf cfst.tar.gz
-
+curl -fL "$CFST_URL" -o cfst.tar.gz
+tar -zxf cfst.tar.gz -O > cfst
 rm -f cfst.tar.gz
 
 chmod +x cfst
 
-if [ ! -f cfst ]; then
-    echo "CFST 下载失败"
+if [ ! -s cfst ]; then
+    echo "CFST 下载或解压失败"
     exit 1
 fi
 
@@ -103,13 +99,13 @@ echo
 echo "[6/6] 生成配置..."
 
 cat > config.conf <<EOF
-CF_TOKEN="${CF_TOKEN}"
+CF_TOKEN='${CF_TOKEN}'
 
-ZONE="${ZONE}"
+ZONE='${ZONE}'
 
-DOMAIN="${DOMAIN}"
+DOMAIN='${DOMAIN}'
 
-TEST_URL="${TEST_URL}"
+TEST_URL='${TEST_URL}'
 
 PROXY=true
 
@@ -134,11 +130,8 @@ echo "cd $INSTALL_DIR"
 echo "./run.sh"
 echo
 
-SELF="$0"
-
-(
-    sleep 1
-    rm -f "$SELF"
-) >/dev/null 2>&1 &
+if [ -n "$SELF_PATH" ] && [ -f "$SELF_PATH" ]; then
+    (sleep 1; rm -f "$SELF_PATH") >/dev/null 2>&1 &
+fi
 
 exit 0

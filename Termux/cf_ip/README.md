@@ -15,6 +15,7 @@ github源
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/IDXCY/my/main/Termux/cf_ip/install.sh)
 ```
+
 加速源
 
 ```bash
@@ -24,6 +25,7 @@ bash <(curl -fsSL https://cdn.jsdelivr.net/gh/IDXCY/my@main/Termux/cf_ip/install
 ```bash
 bash <(curl -fsSL https://ghproxy.net/https://raw.githubusercontent.com/IDXCY/my/main/Termux/cf_ip/install.sh)
 ```
+
 安装完成后运行：
 
 ```bash
@@ -38,4 +40,3 @@ cd ~/cf-ip && ./run.sh
 - 配置保存在 `~/cf-ip/config.conf`，并设置为仅当前用户可读。
 - 测速结果会保存到 `result-v4.csv` 和 `result-v6.csv`。
 - 更新 DNS 时会删除目标域名现有的 A/AAAA 记录并重新创建。
-
