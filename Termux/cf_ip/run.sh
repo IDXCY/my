@@ -66,7 +66,7 @@ speedtest_funnel() {
     [ -s "$SRC_FILE" ] || { echo "❌ 错误：IP 段文件 ${SRC_FILE} 不存在或为空"; exit 1; }
 
     # Stage 1: 粗筛前 100
-    run_stage "${PROTO} Stage 1" "$SRC_FILE" "$TMP_CSV" -n 500 -t 1 -tl 200 -tlr 0 -dd
+    run_stage "${PROTO} Stage 1" "$SRC_FILE" "$TMP_CSV" -n 200 -t 10 -tl 200 -tlr 0 -dd
     awk -F',' 'NR>1 {print $1}' "$TMP_CSV" | head -n 100 > "$TMP_IP"
 
     # Stage 2: 复筛前 20
