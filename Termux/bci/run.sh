@@ -74,7 +74,7 @@ speedtest_funnel() {
     awk -F',' 'NR>1 {print $1}' "$TMP_CSV" | head -n 100 > "$TMP_IP"
 
     # Stage 3: 测下载速度并输出最终结果
-    run_stage "${PROTO} Stage 3" "$TMP_IP" "$FINAL_CSV" -n 30 -t 10 -dn "${KEEP_NUM}" -dt 10 -tll 60 -tl 300 -tlr 0.1
+    run_stage "${PROTO} Stage 3" "$TMP_IP" "$FINAL_CSV" -n 30 -t 10 -dn "${KEEP_NUM}" -dt 10 -tll 60 -tl 300 -tlr 0.1 -sl 2
 }
 
 # 执行 IPv4 与 IPv6 测速
