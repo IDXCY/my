@@ -5,6 +5,11 @@ set -euo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$DIR"
 
+# 兼容 Termux 的 HTTPS 根证书路径，解决 x509 证书验证失败问题
+if [ -f "/data/data/com.termux/files/usr/etc/tls/cert.pem" ]; then
+    export SSL_CERT_FILE="/data/data/com.termux/files/usr/etc/tls/cert.pem"
+fi
+
 # 1. 基础环境与配置校验
 [ -f "config.conf" ] || { echo "❌ 错误：找不到 config.conf 配置文件"; exit 1; }
 [ -x "./cfst" ]      || { echo "❌ 错误：找不到可执行文件 ./cfst"; exit 1; }
@@ -66,15 +71,15 @@ speedtest_funnel() {
     [ -s "$SRC_FILE" ] || { echo "❌ 错误：IP 段文件 ${SRC_FILE} 不存在或为空"; exit 1; }
 
     # Stage 1: 粗筛前 300
-    run_stage "${PROTO} Stage 1" "$SRC_FILE" "$TMP_CSV" -dd -n 300 -t 3 -tll 60 -tl 300 -tlr 0.34
-    awk -F',' 'NR>1 {print $1}' "$TMP_CSV" | head -n 300 > "$TMP_IP"
+    run_stage "${PROTO} Stage 1" "$SRC_FILE" "$TMP_CSV" -dd -n 200 -t 2 -tll 60 -tl 600 -tlr 1 -debug
+    awk -F',' 'NR>1 && NR<=301 {print $1}' "$TMP_CSV" > "$TMP_IP"
 
     # Stage 2: 复筛前 100
-    run_stage "${PROTO} Stage 2" "$TMP_IP" "$TMP_CSV" -dd -n 100 -t 10 -tll 60 -tl 300 -tlr 0.2
-    awk -F',' 'NR>1 {print $1}' "$TMP_CSV" | head -n 100 > "$TMP_IP"
+    run_stage "${PROTO} Stage 2" "$TMP_IP" "$TMP_CSV" -dd -httping -n 50 -t 10 -tll 60 -tl 600 -tlr 0.3 -debug
+    awk -F',' 'NR>1 && NR<=101 {print $1}' "$TMP_CSV" > "$TMP_IP"
 
     # Stage 3: 测下载速度并输出最终结果
-    run_stage "${PROTO} Stage 3" "$TMP_IP" "$FINAL_CSV" -n 30 -t 10 -dn "${KEEP_NUM}" -dt 10 -tll 60 -tl 300 -tlr 0.1 -sl 2
+    run_stage "${PROTO} Stage 3" "$TMP_IP" "$FINAL_CSV" -n 30 -t 2 -dn "${KEEP_NUM}" -dt 10 -tll 60 -tl 600 -tlr 1 -sl 2 -debug
 }
 
 # 执行 IPv4 与 IPv6 测速
