@@ -22,12 +22,12 @@ cf_api() {
     local ENDPOINT="$2"
     local DATA="${3:-}"
     if [ -n "$DATA" ]; then
-        curl -fsS -X "$METHOD" "https://cloudflare.com{ENDPOINT}" \
+        curl -fsS -X "$METHOD" "https://api.cloudflare.com/client/v4/${ENDPOINT}" \
             -H "Authorization: Bearer ${CF_TOKEN}" \
             -H "Content-Type: application/json" \
             --data "$DATA"
     else
-        curl -fsS -X "$METHOD" "https://cloudflare.com{ENDPOINT}" \
+        curl -fsS -X "$METHOD" "https://api.cloudflare.com/client/v4/${ENDPOINT}" \
             -H "Authorization: Bearer ${CF_TOKEN}"
     fi
 }
@@ -65,16 +65,16 @@ speedtest_funnel() {
 
     [ -s "$SRC_FILE" ] || { echo "❌ 错误：IP 段文件 ${SRC_FILE} 不存在或为空"; exit 1; }
 
-    # Stage 1: 粗筛前 100
-    run_stage "${PROTO} Stage 1" "$SRC_FILE" "$TMP_CSV" -n 200 -t 10 -tl 200 -tlr 0 -dd
+    # Stage 1: 粗筛前 300
+    run_stage "${PROTO} Stage 1" "$SRC_FILE" "$TMP_CSV" -n 100 -t 10 -tll 60 -tl 200 -tlr 0 -dd
+    awk -F',' 'NR>1 {print $1}' "$TMP_CSV" | head -n 300 > "$TMP_IP"
+
+    # Stage 2: 复筛前 100
+    run_stage "${PROTO} Stage 2" "$TMP_IP" "$TMP_CSV" -n 100 -t 10 -tll 60 -tl 200 -tlr 0 -dd
     awk -F',' 'NR>1 {print $1}' "$TMP_CSV" | head -n 100 > "$TMP_IP"
 
-    # Stage 2: 复筛前 20
-    run_stage "${PROTO} Stage 2" "$TMP_IP" "$TMP_CSV" -n 200 -t 10 -tl 200 -tlr 0 -dd
-    awk -F',' 'NR>1 {print $1}' "$TMP_CSV" | head -n 20 > "$TMP_IP"
-
     # Stage 3: 测下载速度并输出最终结果
-    run_stage "${PROTO} Stage 3" "$TMP_IP" "$FINAL_CSV" -n 100 -t 10 -dn "${KEEP_NUM}" -dt 10 -tl 200 -tlr 0
+    run_stage "${PROTO} Stage 3" "$TMP_IP" "$FINAL_CSV" -n 50 -t 10 -dn "${KEEP_NUM}" -dt 10 -tll 60 -tl 200 -tlr 0
 }
 
 # 执行 IPv4 与 IPv6 测速
@@ -106,6 +106,7 @@ fi
 update_dns() {
     local TYPE="$1"
     local IP_LIST="$2"
+    [ -n "$IP_LIST" ] || { echo "⚠️ ${TYPE} 列表为空，跳过更新"; return 0; }
 
     echo -e "\n删除旧 ${TYPE} 记录..."
     local RECORDS

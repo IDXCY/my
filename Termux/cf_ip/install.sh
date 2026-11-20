@@ -107,7 +107,7 @@ DOMAIN='${DOMAIN}'
 
 TEST_URL='${TEST_URL}'
 
-PROXY=true
+PROXY=false
 
 KEEP_V4=3
 
