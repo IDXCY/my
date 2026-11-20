@@ -25,7 +25,7 @@ curl -LO https://cdn.jsdelivr.net/gh/IDXCY/my@main/Routers/deploy_services.sh &&
 * init_t.sh：个人Termux的初始化脚本
 
 ```bash
-curl -LO https://cdn.jsdelivr.net/gh/IDXCY/my@main/Termux-WSL/init_t.sh && chmod +x init_t.sh && ./init_t.sh
+curl -LO https://cdn.jsdelivr.net/gh/IDXCY/my@main/Termux/init_t.sh && chmod +x init_t.sh && ./init_t.sh
 ```
 
 ### VPS的脚本
@@ -33,7 +33,7 @@ curl -LO https://cdn.jsdelivr.net/gh/IDXCY/my@main/Termux-WSL/init_t.sh && chmod
 * init_v.sh：个人VPS的初始化脚本
 
 ```bash
-curl -LO https://cdn.jsdelivr.net/gh/IDXCY/my@main/Termux/init_t.sh && chmod +x init_v.sh && ./init_v.sh
+curl -LO https://cdn.jsdelivr.net/gh/IDXCY/my@main/VPS/init_v.sh && chmod +x init_v.sh && ./init_v.sh
 ```
 
 ---
