@@ -2,9 +2,9 @@
 
 set -e
 
-INSTALL_DIR="$HOME/cf-ip"
+INSTALL_DIR="$HOME/bci"
 
-RUN_URL="https://cdn.jsdelivr.net/gh/IDXCY/my@main/Termux/cf_ip/run.sh"
+RUN_URL="https://cdn.jsdelivr.net/gh/IDXCY/my@main/Termux/bci/run.sh"
 
 # 1. 在切换目录前记录安装脚本的绝对路径
 SELF_PATH=""

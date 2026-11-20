@@ -1,4 +1,4 @@
-# cf-ip
+# bci(Best-CF-IP)
 
 用于测试优选的 Cloudflare IPv4 和 IPv6 地址，并将测速结果写入 Cloudflare DNS。
 
@@ -13,23 +13,19 @@
 github源
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/IDXCY/my/main/Termux/cf_ip/install.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/IDXCY/my/main/Termux/bci/install.sh)
 ```
 
 加速源
 
 ```bash
-bash <(curl -fsSL https://cdn.jsdelivr.net/gh/IDXCY/my@main/Termux/cf_ip/install.sh)
-```
-
-```bash
-bash <(curl -fsSL https://ghproxy.net/https://raw.githubusercontent.com/IDXCY/my/main/Termux/cf_ip/install.sh)
+bash <(curl -fsSL https://cdn.jsdelivr.net/gh/IDXCY/my@main/Termux/bci/install.sh)
 ```
 
 安装完成后运行：
 
 ```bash
-cd ~/cf-ip && ./run.sh
+cd ~/bci && ./run.sh
 ```
 
 ## 使用前
@@ -37,6 +33,6 @@ cd ~/cf-ip && ./run.sh
 - 准备一个拥有目标 DNS 区域编辑权限的 Cloudflare API Token。
 - 准备一条可访问的测速地址，例如公开可下载的 HTTP 文件地址。
 - 安装时根据提示输入 Cloudflare API Token、Zone、完整域名和测速 URL。
-- 配置保存在 `~/cf-ip/config.conf`，并设置为仅当前用户可读。
+- 配置保存在 `~/bci/config.conf`，并设置为仅当前用户可读。
 - 测速结果会保存到 `result-v4.csv` 和 `result-v6.csv`。
 - 更新 DNS 时会删除目标域名现有的 A/AAAA 记录并重新创建。
