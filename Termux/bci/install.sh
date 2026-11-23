@@ -3,7 +3,7 @@ set -euo pipefail
 
 INSTALL_DIR="$HOME/bci"
 GH_PROXY="https://gh-proxy.org/https://"
-RUN_URL="${GH_PROXY}raw.githubusercontent.com"
+RUN_URL="${GH_PROXY}raw.githubusercontent.com/IDXCY/my/main/Termux/bci/run.sh"
 
 # 封装通用报错退出与下载校验函数
 die() { echo "❌ $*" >&2; exit 1; }
@@ -34,7 +34,7 @@ case "$(uname -m)" in
     *)             die "不支持架构: $(uname -m)" ;;
 esac
 
-CFST_URL="${GH_PROXY}github.com/XIU2/CloudflareSpeedTest/releases/latest/download/cfst_linux_{ARCH}.tar.gz"
+CFST_URL="${GH_PROXY}github.com/XIU2/CloudflareSpeedTest/releases/latest/download/cfst_linux_${ARCH}.tar.gz"
 curl -fL "$CFST_URL" | tar -zxO > cfst || die "CFST 下载或解压失败"
 [ -s cfst ] || die "CFST 解压后为空"
 chmod +x cfst
