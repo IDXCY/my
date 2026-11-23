@@ -19,7 +19,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/IDXCY/my/main/Termux/bci/ins
 加速源
 
 ```bash
-bash <(curl -fsSL https://cdn.jsdelivr.net/gh/IDXCY/my@main/Termux/bci/install.sh)
+bash <(curl -fsSL https://gh-proxy.org/https://raw.githubusercontent.com/IDXCY/my/main/Termux/bci/install.sh)
 ```
 
 安装完成后运行：
