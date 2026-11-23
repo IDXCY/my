@@ -3,7 +3,7 @@ set -euo pipefail
 
 INSTALL_DIR="$HOME/bci"
 GH_PROXY="https://gh-proxy.org/https://"
-RUN_URL="${GH_PROXY}://githubusercontent.com"
+RUN_URL="${GH_PROXY}://raw.githubusercontent.com"
 
 # 封装通用报错退出与下载校验函数
 die() { echo "❌ $*" >&2; exit 1; }
