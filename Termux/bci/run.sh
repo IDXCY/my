@@ -39,7 +39,7 @@ run_stage() {
     local label="$1" input_file="$2" output_file="$3"
     shift 3
 
-    echo -e "\n========== ${label} =========="
+    echo -e "\n========== ${label} ==========" >&2
     ./cfst "$@" -url "${TEST_URL}" -f "$input_file" -o "$output_file" >&2 \
         || die "测速失败 [${label}]：cfst 运行异常（请检查网络连通性或 TEST_URL）"
 
@@ -55,13 +55,13 @@ speedtest_funnel() {
     [ -s "$src_file" ] || die "错误：IP 段文件 ${src_file} 不存在或为空"
 
     # Stage 1: 粗筛前 300 -> Stage 2: 复筛前 100 -> Stage 3: 测下载速度
-    run_stage "${proto} Stage 1" "$src_file" "$TMP_CSV" -dd -n 200 -t 2 -tll 60 -tl 600 -tlr 1 -debug
+    run_stage "${proto} Stage 1" "$src_file" "$TMP_CSV" -dd -n 400 -t 2 -tll 60 -tl 600 -tlr 1 -debug
     extract_ips "$TMP_CSV" 300 > "$TMP_IP"
 
     run_stage "${proto} Stage 2" "$TMP_IP" "$TMP_CSV" -dd -httping -n 50 -t 10 -tll 60 -tl 600 -tlr 0.3 -debug
     extract_ips "$TMP_CSV" 100 > "$TMP_IP"
 
-    run_stage "${proto} Stage 3" "$TMP_IP" "$final_csv" -n 30 -t 2 -dn "${keep_num}" -dt 10 -tll 60 -tl 600 -tlr 1 -sl 2 -debug
+    run_stage "${proto} Stage 3" "$TMP_IP" "$final_csv" -n 30 -t 2 -dn 10 -dt 10 -tll 60 -tl 600 -tlr 1 -sl 2 -debug
     extract_ips "$final_csv" "$keep_num"
 }
 
@@ -89,7 +89,7 @@ update_dns() {
     local records res
     records=$(cf_api GET "zones/${ZONE_ID}/dns_records?type=${type}&name=${DOMAIN}" | grep -o '"id":"[^"]*"' | cut -d'"' -f4 || true)
     for id in $records; do
-        cf_api DELETE "zones/${ZONE_ID}/dns_records/${id}" >/dev/null
+        cf_api DELETE "zones/${ZONE_ID}/dns_records/${id}" >/dev/null || true
     done
 
     for ip in $ip_list; do
