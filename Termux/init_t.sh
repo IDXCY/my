@@ -1,179 +1,171 @@
 #!/data/data/com.termux/files/usr/bin/bash
+set -e
 
-echo "=== Termux 初始化优化脚本 (纯净原生·时序严谨完全体) ==="
+echo "==> Termux Modern Setup (Zsh + P10k + CLI)"
 
-# ==================== 0. 代理初始化与 Apt 通道建立 ====================
-echo "[-] 为了确保官方源、GitHub 框架、插件、字体 100% 畅通，必须配置代理。"
-read -p "请输入你的本地代理IP (直接回车默认 127.0.0.1): " PROXY_IP
-PROXY_IP=${PROXY_IP:-"127.0.0.1"}
+# 1. 检测网络并自动切换 Termux 镜像源
+SOURCES_LIST="$PREFIX/etc/apt/sources.list"
+TUNA_MIRROR="https://mirrors.tuna.tsinghua.edu.cn/termux/apt/termux-main"
+TEST_URL="https://raw.githubusercontent.com/github/gitignore/main/README.md"
 
-read -p "请输入你的代理共享端口 (直接回车默认 10808): " PROXY_PORT
-PROXY_PORT=${PROXY_PORT:-"10808"}
-
-# A. 注入局部环境变量（供 curl、wget 物理继承）
-export http_proxy="http://${PROXY_IP}:${PROXY_PORT}"
-export https_proxy="http://${PROXY_IP}:${PROXY_PORT}"
-
-# B. 硬编码注入 apt 内核通道（防止直连引发 Unable to locate package）
-mkdir -p $PREFIX/etc/apt/apt.conf.d
-echo "Acquire::http::Proxy \"http://${PROXY_IP}:${PROXY_PORT}\";" > $PREFIX/etc/apt/apt.conf.d/80proxy
-echo "Acquire::https::Proxy \"http://${PROXY_IP}:${PROXY_PORT}\";" >> $PREFIX/etc/apt/apt.conf.d/80proxy
-
-echo "[√] Apt 通道与环境层代理已就绪。"
-echo "--------------------------------------------------------"
-
-# ==================== 1. 物理清空过往残留脏数据与重置官方源 ====================
-echo "[*] 正在物理粉碎可能存在的历史旧锁与残缺索引残留（防前次报错死锁）..."
-rm -rf $PREFIX/var/lib/apt/lists/*
-rm -f $PREFIX/var/lib/dpkg/lock*
-rm -f $PREFIX/var/lib/apt/lists/lock*
-
-echo "[*] 正在强制重置为官方原生高可靠源..."
-cat << 'EOF' > $PREFIX/etc/apt/sources.list
-deb https://packages-cf.termux.org/apt/termux-main stable main
-EOF
-
-echo "[*] 正在通过高可用通道同步官方最新软件包索引..."
-apt update -y
-
-echo "[*] 正在升级底层依赖并执行全局系统升级..."
-apt install termux-tools -y
-apt upgrade -y
-
-if [ ! -d "$HOME/storage" ]; then
-    echo "[*] 正在请求存储权限，请在系统弹窗中允许..."
-    termux-setup-storage
+if ! curl -fsSL --connect-timeout 3 "$TEST_URL" >/dev/null 2>&1; then
+    echo "[*] 切换至清华大学镜像源..."
+    if [ -f "$SOURCES_LIST" ] && ! grep -q "mirrors.tuna.tsinghua.edu.cn" "$SOURCES_LIST"; then
+        cp "$SOURCES_LIST" "${SOURCES_LIST}.bak"
+        sed -i "s@^\(deb.*stable main\)$@#\1\ndeb ${TUNA_MIRROR} stable main@g" "$SOURCES_LIST"
+    fi
 fi
 
-# ==================== 1. 物理清空过往残留脏数据与重置官方源 ====================
-echo "[*] 再次物理粉碎可能存在的历史旧锁与残缺索引残留（防前次报错死锁）..."
-rm -rf $PREFIX/var/lib/apt/lists/*
-rm -f $PREFIX/var/lib/dpkg/lock*
-rm -f $PREFIX/var/lib/apt/lists/lock*
+echo "[*] 更新系统..."
+apt-get update -y
+DEBIAN_FRONTEND=noninteractive
+apt-get upgrade -y
 
-echo "[*] 再次强制重置为官方原生高可靠源..."
-cat << 'EOF' > $PREFIX/etc/apt/sources.list
-deb https://packages-cf.termux.org/apt/termux-main stable main
-EOF
+# 2. 探测 GitHub 加速代理
+GH_MIRRORS=("https://ghfast.top" "https://gh-proxy.com" "https://mirror.ghproxy.com")
+GH_PROXY=""
 
-echo "[*] 正在通过高可用通道同步官方最新软件包索引..."
-apt update -y && apt upgrade -y
-# ==================== 2. 工具箱安装与 Git 代理精准后置注入 ====================
-echo "[*] 正在一次性安装 Zsh, Git 及所有必备工具箱..."
-# 只有在这一行执行完后，系统里才真正拥有 'git' 命令
-apt install zsh curl git tmux tree lf htop ncdu vim wget -y
-
-# 【精准时序修复】Git 软件已确认安全安装，此时注入 Git 全局代理，绝不报错
-echo "[*] 正在为已安装的 Git 挂载高可用代理通道..."
-git config --global http.proxy "http://${PROXY_IP}:${PROXY_PORT}"
-git config --global https.proxy "http://${PROXY_IP}:${PROXY_PORT}"
-
-# ==================== 3. 极简 Zsh 环境配置 (依托 Git 代理高速克隆) ====================
-if [ ! -f "$HOME/.oh-my-zsh/oh-my-zsh.sh" ]; then
-    echo "[*] 正在克隆 Oh My Zsh 官方完整存储库..."
-    rm -rf "$HOME/.oh-my-zsh"
-    git clone https://github.com/ohmyzsh/ohmyzsh.git "$HOME/.oh-my-zsh"
+if ! curl -fsSL --connect-timeout 3 "$TEST_URL" >/dev/null 2>&1; then
+    for mirror in "${GH_MIRRORS[@]}"; do
+        if curl -fsSL --connect-timeout 4 "${mirror}/${TEST_URL}" >/dev/null 2>&1; then
+            GH_PROXY="$mirror"
+            echo "[+] 使用 GitHub 代理: $GH_PROXY"
+            break
+        fi
+    done
 fi
 
-ZSH_CUSTOM="$HOME/.oh-my-zsh/custom"
-if [ ! -d "$ZSH_CUSTOM/plugins/zsh-syntax-highlighting" ]; then
-    echo "[*] 正在克隆语法高亮插件..."
-    git clone https://github.com/zsh-users/zsh-syntax-highlighting.git "$ZSH_CUSTOM/plugins/zsh-syntax-highlighting"
-fi
+github_url() { echo "${GH_PROXY:+${GH_PROXY}/}$1"; }
 
-if [ ! -d "$ZSH_CUSTOM/plugins/zsh-autosuggestions" ]; then
-    echo "[*] 正在克隆自动补全插件..."
-    git clone https://github.com/zsh-users/zsh-autosuggestions.git "$ZSH_CUSTOM/plugins/zsh-autosuggestions"
-fi
+# 3. 辅助函数 (支持多行块去重追加)
+safe_append() {
+    local TEXT="$1" FILE="$2"
+    [ -z "$TEXT" ] && return 0
+    touch "$FILE"
+    local CLEAN_TEXT
+    CLEAN_TEXT=$(printf '%s' "$TEXT" | sed -e '/./,$!d' -e :a -e '/^\n*$/{$d;N;ba' -e '}')
+    if ! awk -v block="$CLEAN_TEXT" '
+        BEGIN { RS=""; FS="\n" }
+        index($0, block) > 0 { found=1; exit }
+        END { exit !found }
+    ' "$FILE" 2>/dev/null; then
+        printf '\n%s\n' "$CLEAN_TEXT" >> "$FILE"
+    fi
+}
 
-# 规范化一键全量写入 .zshrc
-echo "[*] 正在生成标准 .zshrc 配置文件..."
-cat << 'EOF' > "$HOME/.zshrc"
-# ==================== 1. Oh My Zsh 核心框架初始化 ====================
+clone_or_update() {
+    local REPO="$1" TARGET="$2"
+    if [ -d "$TARGET/.git" ]; then
+        git -C "$TARGET" pull --ff-only >/dev/null 2>&1 || true
+    else
+        rm -rf "$TARGET"
+        git clone --depth=1 "$(github_url "$REPO")" "$TARGET"
+    fi
+}
+
+# 4. 存储权限与工具安装
+[ ! -d "$HOME/storage" ] && termux-setup-storage
+echo "[*] 安装工具包..."
+pkg install -y zsh git curl wget vim tree htop ncdu lf fzf ripgrep fd bat zoxide fastfetch
+pkg install -y eza 2>/dev/null || pkg install -y exa 2>/dev/null || true
+
+# 5. Oh My Zsh 与插件
+ZSH_DIR="$HOME/.oh-my-zsh"
+ZSH_CUSTOM="$ZSH_DIR/custom"
+
+clone_or_update "https://github.com/ohmyzsh/ohmyzsh.git" "$ZSH_DIR"
+mkdir -p "$ZSH_CUSTOM/themes" "$ZSH_CUSTOM/plugins"
+
+clone_or_update "https://github.com/romkatv/powerlevel10k.git" "$ZSH_CUSTOM/themes/powerlevel10k"
+clone_or_update "https://github.com/zsh-users/zsh-autosuggestions.git" "$ZSH_CUSTOM/plugins/zsh-autosuggestions"
+clone_or_update "https://github.com/zsh-users/zsh-syntax-highlighting.git" "$ZSH_CUSTOM/plugins/zsh-syntax-highlighting"
+
+# 6. Zsh 与 P10k 配置
+ZSHRC_BLOCK=$(cat <<'EOF'
 export ZSH="$HOME/.oh-my-zsh"
-ZSH_THEME="robbyrussell"
-plugins=(git zsh-syntax-highlighting zsh-autosuggestions)
+ZSH_THEME="powerlevel10k/powerlevel10k"
+plugins=(git zsh-autosuggestions zsh-syntax-highlighting)
 
-if [ -f "$ZSH/oh-my-zsh.sh" ]; then
-    source $ZSH/oh-my-zsh.sh
+[ -f "$ZSH/oh-my-zsh.sh" ] && source "$ZSH/oh-my-zsh.sh"
+[[ -f ~/.p10k.zsh ]] && source ~/.p10k.zsh
+
+export LANG=en_US.UTF-8
+export HISTFILE=$HOME/.zsh_history
+export HISTSIZE=10000
+export SAVEHIST=10000
+
+command -v zoxide >/dev/null 2>&1 && eval "$(zoxide init zsh)"
+command -v fzf >/dev/null 2>&1 && source <(fzf --zsh) 2>/dev/null || true
+
+if command -v eza >/dev/null 2>&1; then
+    alias ls="eza --icons"
+    alias ll="eza -lah --icons"
+    alias la="eza -a --icons"
+elif command -v exa >/dev/null 2>&1; then
+    alias ls="exa --icons"
+    alias ll="exa -lah --icons"
+    alias la="exa -a --icons"
 fi
 
-# ==================== 2. 历史记录最高优先级硬核配置 ====================
-export HISTFILE="$HOME/.zsh_history"
-export HISTSIZE=5000
-export SAVEHIST=5000
-
-setopt BANG_HIST
-setopt EXTENDED_HISTORY
-setopt INC_APPEND_HISTORY
-setopt SHARE_HISTORY
-setopt HIST_IGNORE_DUPS
-setopt HIST_IGNORE_SPACE
-
-# ==================== 3. 环境变量与退出钩子 ====================
-export LANG=zh_CN.UTF-8
-alias exit='apt clean && apt autoclean && exit'
+alias ff="fastfetch"
+alias zi="zoxide query -i"
+alias cls="clear"
+alias p10kcfg="p10k configure"
 EOF
+)
 
-# 保持 .bashrc 干净，且安全追加自动切 Zsh 逻辑
-if [ -f "$HOME/.bashrc" ]; then
-    sed -i '/HISTSIZE=/d; /HISTFILESIZE=/d; /exec zsh/d' "$HOME/.bashrc" 2>/dev/null
+safe_append "$ZSHRC_BLOCK" "$HOME/.zshrc"
+
+if [ ! -f "$HOME/.p10k.zsh" ]; then
+    cat > "$HOME/.p10k.zsh" <<'EOF'
+typeset -g POWERLEVEL9K_MODE=nerdfont-v3
+typeset -g POWERLEVEL9K_LEFT_PROMPT_ELEMENTS=(os_icon dir vcs prompt_char)
+typeset -g POWERLEVEL9K_RIGHT_PROMPT_ELEMENTS=(status command_execution_time background_jobs time)
+typeset -g POWERLEVEL9K_PROMPT_ADD_NEWLINE=true
+typeset -g POWERLEVEL9K_DIR_FOREGROUND=51
+typeset -g POWERLEVEL9K_VCS_CLEAN_FOREGROUND=76
+typeset -g POWERLEVEL9K_VCS_MODIFIED_FOREGROUND=178
+typeset -g POWERLEVEL9K_TIME_FOREGROUND=66
+typeset -g POWERLEVEL9K_TIME_FORMAT='%D{%H:%M}'
+EOF
 fi
-echo "export HISTSIZE=1000" >> "$HOME/.bashrc"
-echo "export HISTFILESIZE=2000" >> "$HOME/.bashrc"
-if ! grep -q "exec zsh" "$HOME/.bashrc"; then
-    echo "exec zsh" >> "$HOME/.bashrc"
-fi
 
-# ==================== 4. 字体与显示美化 ====================
-echo "[*] 正在配置字体与色彩美化..."
-mkdir -p ~/.termux
+# 7. 字体与 OneDark 配色
+mkdir -p "$HOME/.termux"
+FONT_URL=$(github_url "https://raw.githubusercontent.com/romkatv/powerlevel10k-media/master/MesloLGS%20NF%20Regular.ttf")
 
-FONT_URL="https://raw.githubusercontent.com/ryanoasis/nerd-fonts/master/patched-fonts/DejaVuSansMono/Regular/DejaVuSansMNerdFont-Regular.ttf"
-
-if curl -fsSL "$FONT_URL" -o ~/.termux/font.ttf; then
-    echo "[√] 字体下载成功"
+if curl -fsSL --connect-timeout 10 "$FONT_URL" -o "$HOME/.termux/font.ttf.tmp"; then
+    mv "$HOME/.termux/font.ttf.tmp" "$HOME/.termux/font.ttf"
 else
-    echo "[×] 远程字体下载失败。"
+    rm -f "$HOME/.termux/font.ttf.tmp"
 fi
 
-# 写入暗黑高对比度配色
-cat << 'EOF' > ~/.termux/colors.properties
-background: #1e1e1e
-foreground: #c5c8c6
-cursor: #aeafad
-color0: #1d1f21
-color1: #cc6666
-color2: #b5bd68
-color3: #f0c674
-color4: #81a2be
-color5: #b294bb
-color6: #8abeb7
-color7: #c5c8c6
-color8: #666666
-color9: #d54e53
-color10: #b9ca4a
-color11: #e7c547
-color12: #7aa6da
-color13: #c397d8
-color14: #70c0b1
-color15: #eaeaea
+cat > "$HOME/.termux/colors.properties" <<'EOF'
+background: #1e2127
+foreground: #abb2bf
+cursor: #528bff
+color0: #1e2127
+color1: #e06c75
+color2: #98c379
+color3: #e5c07b
+color4: #61afef
+color5: #c678dd
+color6: #56b6c2
+color7: #abb2bf
+color8: #5c6370
+color9: #e06c75
+color10: #98c379
+color11: #e5c07b
+color12: #61afef
+color13: #c678dd
+color14: #56b6c2
+color15: #ffffff
 EOF
 
-termux-reload-settings
+# 8. 默认 Shell 与收尾
+command -v chsh >/dev/null 2>&1 && chsh -s zsh || true
+safe_append "exec zsh" "$HOME/.bashrc"
+termux-reload-settings >/dev/null 2>&1 || true
+pkg clean
 
-# ==================== 5. 退出清理环境 ====================
-echo "[*] 正在卸载脚本运行时临时挂载的代理通道..."
-# 移除全局 Git 代理，转为纯净态
-git config --global --unset http.proxy
-git config --global --unset https.proxy
-
-# 移除 apt 临时配置文件，保证日常不依赖固定本地端口
-rm -f $PREFIX/etc/apt/apt.conf.d/80proxy
-
-termux-change-repo
-
-echo "=== 初始化全部完美成功！重启 Termux 或运行 exec zsh 生效 ==="
-
-# 清理下载的安装脚本自身
-rm -f "$HOME/init_t.sh" 2>/dev/null || true
+echo "==> 安装完成，请重启 Termux 生效"
